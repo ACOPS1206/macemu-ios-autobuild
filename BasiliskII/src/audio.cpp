@@ -31,6 +31,8 @@
 #include "main.h"
 #include "audio.h"
 #include "audio_defs.h"
+#include "user_strings.h"
+#include "cdrom.h"
 
 #define DEBUG 0
 #include "debug.h"
@@ -51,6 +53,9 @@ static int open_count = 0;			// Open/close nesting count
 
 bool AudioAvailable = false;		// Flag: audio output available (from the software point of view)
 
+int SoundInSource = 2;
+int SoundInPlaythrough = 7;
+int SoundInGain = 65536; // FIXED 4-byte from 0.5 to 1.5; this is middle value (1) as int
 
 /*
  *  Reset audio emulation
@@ -406,8 +411,8 @@ adat_error:	printf("FATAL: audio component data block initialization error\n");
 						// Close Apple Mixer
 						r.a[0] = AudioStatus.mixer;
 						Execute68k(audio_data + adatCloseMixer, &r);
+						D(bug(" CloseMixer() returns %08lx, mixer %08lx\n", r.d[0], AudioStatus.mixer));
 						AudioStatus.mixer = 0;
-						return r.d[0];
 					}
 					r.a[0] = audio_data;
 					Execute68kTrap(0xa01f, &r);	// DisposePtr()
@@ -533,7 +538,7 @@ delegate:	// Delegate call to Apple Mixer
 	}
 }
 
-
+// not currently using these functions
 /*
  *  Sound input driver Open() routine
  */
@@ -553,7 +558,20 @@ int16 SoundInPrime(uint32 pb, uint32 dce)
 {
 	D(bug("SoundInPrime\n"));
 	//!!
-	return paramErr;
+	
+	uint16 code = ReadMacInt16(pb + csCode);
+	D(bug("SoundInControl %d\n", code));
+
+	if (code == 1) {
+		D(bug(" SoundInKillIO\n"));
+		//!!
+		return noErr;
+	}
+
+	if (code != 2)
+		return -231;	// siUnknownInfoType
+
+	return noErr;
 }
 
 
@@ -574,12 +592,39 @@ int16 SoundInControl(uint32 pb, uint32 dce)
 
 	if (code != 2)
 		return -231;	// siUnknownInfoType
-
-	uint32 *param = (uint32 *)Mac2HostAddr(pb + csParam);
-	uint32 selector = param[0];
-	D(bug(" selector %c%c%c%c\n", selector >> 24, selector >> 16, selector >> 8, selector));
+	
+	uint32 selector = ReadMacInt32(pb + csParam); // 4-byte selector (should match via FOURCC above)
 
 	switch (selector) {
+		case siInitializeDriver: {
+//			If possible, the driver initializes the device to a sampling rate of 22 kHz, a sample size of 8 bits, mono recording, no compression, automatic gain control on, and all other features off.
+			return noErr;
+		}
+			
+		case siCloseDriver: {
+//			The sound input device driver should stop any recording in progress, deallocate the input hardware, and initialize local variables to default settings.
+			return noErr;
+		}
+			
+		case siInputSource: {
+			SoundInSource = ReadMacInt16(pb + csParam + 4);
+			return noErr;
+		}
+			
+		case siPlayThruOnOff: {
+			SoundInPlaythrough = ReadMacInt16(pb + csParam + 4);
+			return noErr;
+		}
+			
+		case siOptionsDialog: {
+			return noErr;
+		}
+			
+		case siInputGain: {
+			SoundInGain = ReadMacInt32(pb + csParam + 4);
+			return noErr;
+		}
+			
 		default:
 			return -231;	// siUnknownInfoType
 	}
@@ -590,58 +635,187 @@ int16 SoundInControl(uint32 pb, uint32 dce)
  *  Sound input driver Status() routine
  */
 
-int16 SoundInStatus(uint32 pb, uint32 dce)
+int16 SoundInStatus(uint32 pb, uint32 dce) // A0 points to Device Manager parameter block (pb) and A1 to device control entry (dce)
 {
 	uint16 code = ReadMacInt16(pb + csCode);
 	D(bug("SoundInStatus %d\n", code));
 	if (code != 2)
 		return -231;	// siUnknownInfoType
+	
+	// two choices on return
+	// 1: if under 18 bytes, place # of bytes at (pb+csParam) and write from (pb+csParam+4) on
+	// 2: if over 18 bytes, place 0 at (pb+csParam) and directly write into address pointed to by (pb+csParam+4)
+	uint32 selector = ReadMacInt32(pb + csParam); // 4-byte selector (should match via FOURCC above)
+	uint32 bufferptr = ReadMacInt32(pb + csParam + 4); // 4-byte address to the buffer in vm memory
 
-	uint32 *param = (uint32 *)Mac2HostAddr(pb + csParam);
-	uint32 selector = param[0];
-	D(bug(" selector %c%c%c%c\n", selector >> 24, selector >> 16, selector >> 8, selector));
 	switch (selector) {
-#if 0
-		case siDeviceName: {
-			const char *str = GetString(STR_SOUND_IN_NAME);
-			param[0] = 0;
-			memcpy((void *)param[1], str, strlen(str));
+		case siDeviceName: { // return name in STR255 format
+			const uint8 str[] = { // size 9
+				0x08,		// 1-byte length
+				0x42, 0x75, // Bu
+				0x69, 0x6c, // il
+				0x74, 0x2d, // t-
+				0x69, 0x6e  // in
+			};
+//			const uint8 str[] = { // size 12
+//                0x0b,       // 1-byte length
+//                0x53, 0x68, // Sh
+//                0x65, 0x65, // ee
+//                0x70, 0x73, // ps
+//                0x68, 0x61, // ha
+//                0x76, 0x65, // ve
+//                0x72        // r
+//			};
+			WriteMacInt32(pb + csParam, 0); // response will be written directly into buffer
+			Host2Mac_memcpy(bufferptr, str, sizeof(str));
+			
 			return noErr;
 		}
 
 		case siDeviceIcon: {
+			// todo: add soundin ICN, borrow from CD ROM for now
+			WriteMacInt32(pb + csParam, 0);
+			
 			M68kRegisters r;
-			static const uint8 proc[] = {
-				0x55, 0x8f,							// 	subq.l	#2,sp
-				0xa9, 0x94,							// 	CurResFile
-				0x42, 0x67,							// 	clr.w	-(sp)
-				0xa9, 0x98,							// 	UseResFile
-				0x59, 0x8f,							// 	subq.l	#4,sp
-				0x48, 0x79, 0x49, 0x43, 0x4e, 0x23,	// 	move.l	#'ICN#',-(sp)
-				0x3f, 0x3c, 0xbf, 0x76,				// 	move.w	#-16522,-(sp)
-				0xa9, 0xa0,							// 	GetResource
-				0x24, 0x5f,							// 	move.l	(sp)+,a2
-				0xa9, 0x98,							// 	UseResFile
-				0x20, 0x0a,							// 	move.l	a2,d0
-				0x66, 0x04,							// 	bne		1
-				0x70, 0x00,							//  moveq	#0,d0
-				M68K_RTS >> 8, M68K_RTS & 0xff,
-				0x2f, 0x0a,							//1 move.l	a2,-(sp)
-				0xa9, 0x92,							//  DetachResource
-				0x20, 0x4a,							//  move.l	a2,a0
-				0xa0, 0x4a,							//	HNoPurge
-				0x70, 0x01,							//	moveq	#1,d0
-				M68K_RTS >> 8, M68K_RTS & 0xff
-			};
-			Execute68k(Host2MacAddr((uint8 *)proc), &r);
-			if (r.d[0]) {
-				param[0] = 4;		// Length of returned data
-				param[1] = r.a[2];	// Handle to icon suite
-				return noErr;
-			} else
-				return -192;		// resNotFound
+			r.d[0] = sizeof(CDROMIcon);
+			Execute68kTrap(0xa122, &r);	// NewHandle()
+			uint32 h = r.a[0];
+			if (h == 0)
+				return memFullErr;
+			WriteMacInt32(bufferptr, h);
+			uint32 sp = ReadMacInt32(h);
+			Host2Mac_memcpy(sp, CDROMIcon, sizeof(CDROMIcon));
+			
+			return noErr;
+			
+			// 68k code causes crash in sheep and link error in basilisk
+//			M68kRegisters r;
+//			static const uint8 proc[] = {
+//				0x55, 0x8f,							// 	subq.l	#2,sp
+//				0xa9, 0x94,							// 	CurResFile
+//				0x42, 0x67,							// 	clr.w	-(sp)
+//				0xa9, 0x98,							// 	UseResFile
+//				0x59, 0x8f,							// 	subq.l	#4,sp
+//				0x48, 0x79, 0x49, 0x43, 0x4e, 0x23,	// 	move.l	#'ICN#',-(sp)
+//				0x3f, 0x3c, 0xbf, 0x76,				// 	move.w	#-16522,-(sp)
+//				0xa9, 0xa0,							// 	GetResource
+//				0x24, 0x5f,							// 	move.l	(sp)+,a2
+//				0xa9, 0x98,							// 	UseResFile
+//				0x20, 0x0a,							// 	move.l	a2,d0
+//				0x66, 0x04,							// 	bne		1
+//				0x70, 0x00,							//  moveq	#0,d0
+//				M68K_RTS >> 8, M68K_RTS & 0xff,
+//				0x2f, 0x0a,							//1 move.l	a2,-(sp)
+//				0xa9, 0x92,							//  DetachResource
+//				0x20, 0x4a,							//  move.l	a2,a0
+//				0xa0, 0x4a,							//	HNoPurge
+//				0x70, 0x01,							//	moveq	#1,d0
+//				M68K_RTS >> 8, M68K_RTS & 0xff
+//			};
+//			Execute68k(Host2MacAddr((uint8 *)proc), &r);
+//			if (r.d[0]) {
+//				WriteMacInt32(pb + csParam, 4); // Length of returned data
+//				WriteMacInt32(pb + csParam + 4, r.a[2]); // Handle to icon suite
+//				return noErr;
+//			} else
+//				return -192;		// resNotFound
 		}
-#endif
+			
+		case siInputSource: {
+			// return -231 if only 1 or index of current source if more
+
+			WriteMacInt32(pb + csParam, 2);
+			WriteMacInt16(pb + csParam + 4, SoundInSource); // index of selected source
+			return noErr;
+		}
+			
+		case siInputSourceNames: {
+			// return -231 if only 1 or handle to STR# resource if more
+			
+			const uint8 str[] = {
+				0x00, 0x02, // 2-byte count of #strings
+				// byte size indicator (up to 255 length supported)
+				0x0a,       // size is 10
+				0x4d, 0x69,	// Mi
+				0x63, 0x72,	// cr
+				0x6f, 0x70,	// op
+				0x68, 0x6f,	// ho
+				0x6e, 0x65,	// ne
+				0x0b,		// size is 11
+				0x49, 0x6e, // start of string in ASCII, In
+				0x74, 0x65, // te
+				0x72, 0x6e, // rn
+				0x61, 0x6c, // al
+				0x20, 0x43, //  C
+				0x44,  		// D
+			};
+
+			WriteMacInt32(pb + csParam, 0);
+
+			M68kRegisters r;
+			r.d[0] = sizeof(str);
+			Execute68kTrap(0xa122, &r);	// NewHandle()
+			uint32 h = r.a[0];
+			if (h == 0)
+				return memFullErr;
+			WriteMacInt32(bufferptr, h);
+			uint32 sp = ReadMacInt32(h);
+			Host2Mac_memcpy(sp, str, sizeof(str));
+			
+			return noErr;
+		}
+			
+		case siOptionsDialog: {
+			// 0 if no options box supported and 1 if so
+			WriteMacInt32(pb + csParam, 2); // response not in buffer, need to copy integer
+			WriteMacInt16(pb + csParam + 4, 1); // Integer data type
+			return noErr;
+		}
+			
+		case siPlayThruOnOff: {
+			// playthrough volume, 0 is off and 7 is max
+			WriteMacInt32(pb + csParam, 2);
+			WriteMacInt16(pb + csParam + 4, SoundInPlaythrough);
+			return noErr;
+		}
+			
+		case siNumberChannels: {
+			// 1 is mono and 2 is stereo
+			WriteMacInt32(pb + csParam, 2);
+			WriteMacInt16(pb + csParam + 4, 2);
+			return noErr;
+		}
+	
+		case siSampleRate: {
+			WriteMacInt32(pb + csParam, 0);
+			WriteMacInt32(bufferptr, 0xac440000); // 44100.00000 Hz, of Fixed data type
+			return noErr;
+		}
+	
+		case siSampleRateAvailable: {
+			WriteMacInt32(pb + csParam, 0);
+            
+            M68kRegisters r;
+            r.d[0] = 4;
+            Execute68kTrap(0xa122, &r);    // NewHandle()
+            uint32 h = r.a[0];
+            if (h == 0)
+                return memFullErr;
+            WriteMacInt16(bufferptr, 1); // 1 sample rate available
+            WriteMacInt32(bufferptr + 2, h); // handle to sample rate list
+            uint32 sp = ReadMacInt32(h);
+            WriteMacInt32(sp, 0xac440000); // 44100.00000 Hz, of Fixed data type
+
+			return noErr;
+		}
+			
+		case siInputGain: {
+			WriteMacInt32(pb + csParam, 4);
+			WriteMacInt32(pb + csParam + 4, SoundInGain);
+			return noErr;
+		}
+								   
+			
 		default:
 			return -231;	// siUnknownInfoType
 	}

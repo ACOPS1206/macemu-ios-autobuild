@@ -36,6 +36,9 @@ AC_ARG_ENABLE(fpe,
 dnl External packages.
 AC_ARG_WITH(gtk,             [  --with-gtk              use GTK user interface [default=yes]], [WANT_GTK=$withval], [WANT_GTK=yes])
 
+AC_ARG_WITH(bincue,   
+  AS_HELP_STRING([--with-bincue], [Allow cdrom image files in bin/cue mode]))
+
 dnl Addressing modes.
 AC_ARG_ENABLE(addressing,
 [  --enable-addressing=AM  specify the addressing mode to use [default=fastest]],
@@ -84,6 +87,14 @@ AC_SUBST(WANT_GTK)
 
 dnl We use 64-bit file size support if possible.
 AC_SYS_LARGEFILE
+
+dnl BINCUE
+AS_IF([test  "x$with_bincue" = "xyes" ], [have_bincue=yes], [have_bincue=no])
+AS_IF([test  "x$have_bincue" = "xyes" ], [
+   DEFINES="$DEFINES -DBINCUE"
+   CPPFLAGS="$CPPFLAGS -DBINCUE"
+   AC_SUBST(USE_BINCUE, yes)
+], [AC_SUBST(USE_BINCUE, no)])
 
 dnl Checks for header files.
 AC_HEADER_STDC
@@ -269,10 +280,13 @@ if [[ "x$HAVE_GCC30" = "xyes" ]]; then
   AC_CACHE_CHECK([whether the compiler supports -fno-strict-aliasing],
     ac_cv_gcc_no_strict_aliasing, [
     AC_TRY_COMPILE([],[],
-      [ac_cv_gcc_no_strict_aliasing=yes; AC_SUBST(SLIRP_CFLAGS, "-fno-strict-aliasing")],
+      [ac_cv_gcc_no_strict_aliasing=yes],
       [ac_cv_gcc_no_strict_aliasing=no])
   ])
   CFLAGS="$SAVED_CFLAGS"
+  if test "x$ac_cv_gcc_no_strict_aliasing" = xyes; then
+       AC_SUBST(SLIRP_CFLAGS, "-fno-strict-aliasing")
+  fi
 fi
 
 dnl Select appropriate CPU source and REGPARAM define.
@@ -302,6 +316,11 @@ elif [[ "x$HAVE_GCC30" = "xyes" -a "x$HAVE_X86_64" = "xyes" ]]; then
     JITSRCS="cpuemu1_nf.cpp cpuemu2_nf.cpp cpuemu3_nf.cpp cpuemu4_nf.cpp cpuemu5_nf.cpp cpuemu6_nf.cpp cpuemu7_nf.cpp cpuemu8_nf.cpp $JITSRCS"
     CAN_JIT=yes
   fi
+fi
+
+dnl BINCUE overrides
+if [[ "x$have_bincue" = "xyes" ]]; then
+  EXTRASRCS="$EXTRASRCS bincue.cpp"
 fi
 
 dnl Enable JIT compiler, if possible.
@@ -524,7 +543,8 @@ CPUINCLUDES="-I../uae_cpu"
 CPUSRCS="../uae_cpu/basilisk_glue.cpp ../uae_cpu/memory.cpp ../uae_cpu/newcpu.cpp ../uae_cpu/readcpu.cpp $FPUSRCS cpustbl.cpp cpudefs.cpp $CPUSRCS $JITSRCS"
 
 dnl We really want SDL for now
-AC_CHECK_TOOL(sdl_config, sdl2-config, [AC_MSG_ERROR([Sorry, you currently need SDL for this port])])
+AC_CHECK_TOOL(sdl_config, sdl2-config, no)
+AS_IF([test "x$sdl_config" = xno], [AC_MSG_ERROR([Sorry, you currently need SDL for this port])])
 SDL_CFLAGS=`$sdl_config --cflags`
 AC_SUBST(SDL_CFLAGS)
 #if [[ "x$WANT_SDL_STATIC" = "xyes" ]]; then
@@ -552,6 +572,7 @@ dnl Generate Makefile.
 AC_SUBST(DEFINES)
 AC_SUBST(CPUINCLUDES)
 AC_SUBST(CPUSRCS)
+AC_SUBST(EXTRASRCS)
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
 
@@ -564,6 +585,7 @@ echo JIT debug mode ......................... : $WANT_JIT_DEBUG
 echo Floating-Point emulation core .......... : $FPE_CORE
 echo Assembly optimizations ................. : $ASM_OPTIMIZATIONS
 echo Addressing mode ........................ : $ADDRESSING_MODE
+echo BINCUE support ......................... : $have_bincue
 echo GTK user interface ..................... : $WANT_GTK
 echo
 echo "Configuration done. Now type \"make\" (or \"gmake\")."

@@ -29,12 +29,13 @@
 #include <SDL_mutex.h>
 #include <SDL_audio.h>
 #include <SDL_version.h>
+#include <SDL_timer.h>
 
 #define DEBUG 0
 #include "debug.h"
 
 #if defined(BINCUE)
-#include "bincue_unix.h"
+#include "bincue.h"
 #endif
 
 
@@ -54,6 +55,7 @@ static bool audio_mute = false;
 
 // Prototypes
 static void stream_func(void *arg, uint8 *stream, int stream_len);
+static int play_startup(void *arg);
 
 
 /*
@@ -92,7 +94,7 @@ static bool open_sdl_audio(void)
 	audio_spec.freq = audio_sample_rates[audio_sample_rate_index] >> 16;
 	audio_spec.format = (audio_sample_sizes[audio_sample_size_index] == 8) ? AUDIO_U8 : AUDIO_S16MSB;
 	audio_spec.channels = audio_channel_counts[audio_channel_count_index];
-	audio_spec.samples = 4096;
+	audio_spec.samples = 4096 >> PrefsFindInt32("sound_buffer");
 	audio_spec.callback = stream_func;
 	audio_spec.userdata = NULL;
 
@@ -112,7 +114,7 @@ static bool open_sdl_audio(void)
 
 #if defined(BINCUE)
 	OpenAudio_bincue(audio_spec.freq, audio_spec.format, audio_spec.channels,
-	audio_spec.silence);
+	audio_spec.silence, audio_volume);
 #endif
 
 #if SDL_VERSION_ATLEAST(2,0,0)
@@ -166,6 +168,8 @@ void AudioInit(void)
 
 	// Open and initialize audio device
 	open_audio();
+	
+	SDL_CreateThread(play_startup, "", NULL);
 }
 
 
@@ -249,11 +253,13 @@ static void stream_func(void *arg, uint8 *stream, int stream_len)
 	} else {
 
 		// Audio not active, play silence
-silence: memset(stream, silence_byte, stream_len);
+		silence: memset(stream, silence_byte, stream_len);
 	}
+	
 #if defined(BINCUE)
-	MixAudio_bincue(stream, stream_len);
+	MixAudio_bincue(stream, stream_len, audio_volume);
 #endif
+	
 }
 
 
@@ -356,4 +362,24 @@ void audio_set_speaker_mute(bool mute)
 
 void audio_set_speaker_volume(uint32 vol)
 {
+}
+
+static int play_startup(void *arg) {
+	SDL_AudioSpec wav_spec;
+	Uint8 *wav_buffer;
+	Uint32 wav_length;
+	if (SDL_LoadWAV("startup.wav", &wav_spec, &wav_buffer, &wav_length)) {
+		SDL_AudioSpec obtained;
+		SDL_AudioDeviceID deviceId = SDL_OpenAudioDevice(NULL, 0, &wav_spec, &obtained, 0);
+		if (deviceId) {
+			SDL_QueueAudio(deviceId, wav_buffer, wav_length);
+			SDL_PauseAudioDevice(deviceId, 0);
+			while (SDL_GetQueuedAudioSize(deviceId)) SDL_Delay(10);
+			SDL_Delay(500);
+			SDL_CloseAudioDevice(deviceId);
+		}
+		else printf("play_startup: Audio driver failed to initialize\n");
+		SDL_FreeWAV(wav_buffer);
+	}
+	return 0;
 }

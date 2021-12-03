@@ -177,6 +177,12 @@ user_string_def common_strings[] = {
 	{STR_24_BIT_1600x1200_LAB, "1600x1200, 24 Bit"},
 	{STR_SOUND_CTRL, "Sound"},
 	{STR_NOSOUND_CTRL, "Disable Sound Output"},
+	{STR_GRAPHICS_SDL_RENDER_DRIVER_CTRL, "Render Driver"},
+	{STR_SOFTWARE_LAB, "Software"},
+	{STR_OPENGL_LAB, "OpenGL"},
+	{STR_DIRECT3D_LAB, "Direct3D"},
+	{STR_GRAPHICS_SDL_VSYNC_CTRL, "Vertical Sync (Software)"},
+	{STR_DEFAULT_LAB, "Default"},
 
 	{STR_SERIAL_NETWORK_PANE_TITLE, "Serial/Network"},
 	{STR_SERIALA_CTRL, "Modem Port"},
@@ -225,9 +231,7 @@ user_string_def common_strings[] = {
 	{STR_JIT_FOLLOW_CONST_JUMPS, "Translate through constant jumps (inline blocks)"},
 
 	{STR_WINDOW_TITLE, "Basilisk II"},
-	{STR_WINDOW_TITLE_FROZEN, "Basilisk II *** FROZEN ***"},
-	{STR_WINDOW_TITLE_GRABBED, "Basilisk II (mouse grabbed, press Ctrl-F5 to release)"},
-	{STR_WINDOW_TITLE_GRABBED0, "Basilisk II (mouse grabbed, press "},
+	{STR_WINDOW_TITLE_GRABBED0, " (mouse grabbed, press "},
 	{STR_WINDOW_TITLE_GRABBED1, "Ctrl-"},
 #ifdef __APPLE__
 	{STR_WINDOW_TITLE_GRABBED2, "Opt-"},
@@ -243,6 +247,8 @@ user_string_def common_strings[] = {
 	{STR_WINDOW_ITEM_MOUNT, "Mount"},
 	{STR_SUSPEND_WINDOW_TITLE, "Basilisk II suspended. Press space to reactivate."},
 
+    {STR_SOUND_IN_NAME, "\010Built-In"},
+    
 	{STR_EXTFS_NAME, "Host Directory Tree"},
 	{STR_EXTFS_VOLUME_NAME, "Host"},
 

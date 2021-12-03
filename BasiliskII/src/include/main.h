@@ -34,8 +34,15 @@ extern bool TwentyFourBitAddressing;
 // 68k register structure (for Execute68k())
 struct M68kRegisters {
 	uint32 d[8];
+#ifdef UPDATE_UAE
+	memptr a[8];
+	uint16 sr;
+	memptr usp, isp, msp;
+	memptr pc;
+#else
 	uint32 a[8];
 	uint16 sr;
+#endif
 };
 
 // General functions
@@ -73,6 +80,9 @@ enum {
 extern uint32 InterruptFlags;									// Currently pending interrupts
 extern void SetInterruptFlag(uint32 flag);						// Set/clear interrupt flags
 extern void ClearInterruptFlag(uint32 flag);
+
+// vde switch variable
+extern char* vde_sock;
 
 // Array length
 #if __cplusplus >= 201103L || (_MSC_VER >= 1900 && defined __cplusplus)

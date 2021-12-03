@@ -52,6 +52,7 @@ links:
 	(cd src/Windows; if [ ! -e m4 ]; then ln -s ../../../BasiliskII/src/Unix/m4; fi)
 	@list='adb.cpp audio.cpp cdrom.cpp disk.cpp extfs.cpp pict.c \
 	       prefs.cpp scsi.cpp sony.cpp xpram.cpp \
+	       bincue.cpp include/bincue.h \
 	       include/adb.h include/audio.h include/audio_defs.h \
 	       include/cdrom.h include/clip.h include/debug.h include/disk.h \
 	       include/extfs.h include/extfs_defs.h include/pict.h \
@@ -63,7 +64,7 @@ links:
 	       BeOS/xpram_beos.cpp BeOS/SheepDriver BeOS/SheepNet \
 	       CrossPlatform/sigsegv.h CrossPlatform/vm_alloc.h CrossPlatform/vm_alloc.cpp \
                CrossPlatform/video_vosf.h CrossPlatform/video_blit.h CrossPlatform/video_blit.cpp \
-	       Unix/audio_oss_esd.cpp Unix/bincue_unix.cpp Unix/bincue_unix.h \
+	       Unix/audio_oss_esd.cpp \
 	       Unix/vhd_unix.cpp \
 	       Unix/extfs_unix.cpp Unix/serial_unix.cpp \
 	       Unix/sshpty.h Unix/sshpty.c Unix/strlcpy.h Unix/strlcpy.c \

@@ -77,6 +77,14 @@ prefs_desc common_prefs_items[] = {
 	{"scale_integer",TYPE_BOOLEAN,false,"integer scaling"},
 	{"yearofs", TYPE_INT32, 0,			"year offset"},
 	{"dayofs", TYPE_INT32, 0,			"day offset"},
+	{"mag_rate", TYPE_INT32, 0,			"rate of magnification"},
+	{"gammaramp", TYPE_STRING, false,	"gamma ramp (on, off or fullscreen)"},
+	{"swap_opt_cmd", TYPE_BOOLEAN, false,	"swap option and command key"},
+	{"ignoresegv", TYPE_BOOLEAN, false,    "ignore illegal memory accesses"},
+	{"host_domain", TYPE_STRING, true,	"handle DNS requests for this domain on the host (slirp only)"},
+	{"title", TYPE_STRING, false,	"window title"},
+	{"sound_buffer", TYPE_INT32, false,	"sound buffer length"},
+	{"name_encoding", TYPE_INT32, false,	"file name encoding"},
 	{NULL, TYPE_END, false, NULL} // End of list
 };
 
@@ -105,7 +113,7 @@ void AddPrefsDefaults(void)
 	
 #if USE_JIT
 	// JIT compiler specific options
-	PrefsAddBool("jit", true);
+//	PrefsAddBool("jit", true);
 	PrefsAddBool("jitfpu", true);
 	PrefsAddBool("jitdebug", false);
 	PrefsAddInt32("jitcachesize", 8192);
@@ -116,4 +124,11 @@ void AddPrefsDefaults(void)
 #endif
 
     PrefsAddInt32("keyboardtype", 5);
+
+#ifdef __APPLE__
+	PrefsAddBool("swap_opt_cmd", false);
+#else
+	PrefsAddBool("swap_opt_cmd", true);
+#endif
+	PrefsAddBool("ignoresegv", true);
 }

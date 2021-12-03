@@ -65,6 +65,14 @@ prefs_desc common_prefs_items[] = {
 	{"cpuclock", TYPE_INT32, 0,			"CPU clock [MHz] of system info"},
 	{"yearofs", TYPE_INT32, 0,			"year offset"},
 	{"dayofs", TYPE_INT32, 0,			"day offset"},
+	{"mag_rate", TYPE_INT32, 0,			"rate of magnification"},
+	{"gammaramp", TYPE_STRING, false,	"gamma ramp (on, off or fullscreen)"},
+	{"swap_opt_cmd", TYPE_BOOLEAN, false,	"swap option and command key"},
+	{"host_domain", TYPE_STRING, true,	"handle DNS requests for this domain on the host (slirp only)"},
+	{"redir", TYPE_STRING, true,		"port forwarding for slirp"},
+	{"title", TYPE_STRING, false,	"window title"},
+	{"sound_buffer", TYPE_INT32, false,	"sound buffer length"},
+	{"name_encoding", TYPE_INT32, false,	"file name encoding"},
 	{NULL, TYPE_END, false, NULL} // End of list
 };
 
@@ -87,7 +95,7 @@ void AddPrefsDefaults(void)
 	PrefsAddBool("nosound", false);
 	PrefsAddBool("nogui", false);
 	PrefsAddBool("noclipconversion", false);
-	PrefsAddBool("ignoresegv", false);
+	PrefsAddBool("ignoresegv", true);
 	PrefsAddBool("ignoreillegal", false);
 
 #if USE_JIT
@@ -99,4 +107,10 @@ void AddPrefsDefaults(void)
 	PrefsAddBool("jit68k", false);
 
 	PrefsAddInt32("keyboardtype", 5);
+
+#ifdef __APPLE__
+	PrefsAddBool("swap_opt_cmd", false);
+#else
+	PrefsAddBool("swap_opt_cmd", true);
+#endif
 }

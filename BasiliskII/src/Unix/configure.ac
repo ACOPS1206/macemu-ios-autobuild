@@ -39,7 +39,7 @@ AC_ARG_ENABLE(sdl-framework-prefix,    [  --enable-sdl-framework-prefix=PFX    d
 AC_ARG_WITH(sdl1,            [  --with-sdl1             use SDL 1.x, rather than SDL 2.x [default=no]], [WANT_SDL_VERSION_MAJOR=1], [])
 
 dnl JIT compiler options.
-AC_ARG_ENABLE(jit-compiler,  [  --enable-jit-compiler   enable JIT compiler [default=no]], [WANT_JIT=$enableval], [WANT_JIT=no])
+AC_ARG_ENABLE(jit-compiler,  [  --enable-jit-compiler   enable JIT compiler [default=yes]], [WANT_JIT=$enableval], [WANT_JIT=yes])
 AC_ARG_ENABLE(jit-debug,     [  --enable-jit-debug      activate native code disassemblers [default=no]], [WANT_JIT_DEBUG=$enableval], [WANT_JIT_DEBUG=no])
 
 dnl FPU emulation core.
@@ -88,6 +88,11 @@ AC_ARG_WITH(bincue,
 
 AC_ARG_WITH(libvhd,   
   AS_HELP_STRING([--with-libvhd], [Enable VHD disk images]))
+
+AC_ARG_WITH(vdeplug,
+  AS_HELP_STRING([--with-vdeplug], [Enable VDE virtual network support]),
+  [],
+  [with_vdeplug=yes])
 
   
 dnl Cross Compiling results in 'guesses' being made about the target system. These defaults are oftetimes incorrect.
@@ -369,6 +374,7 @@ AS_IF([test  "x$with_bincue" = "xyes" ], [have_bincue=yes], [have_bincue=no])
 AS_IF([test  "x$have_bincue" = "xyes" ], [
    if [[ "x$WANT_SDL_AUDIO" = "xyes" ]]; then
        DEFINES="$DEFINES -DBINCUE"
+       CPPFLAGS="$CPPFLAGS -DBINCUE"
        AC_SUBST(USE_BINCUE, yes)
    else
        AC_MSG_ERROR([You need SDL Audio to use BINCUE support.])
@@ -470,10 +476,6 @@ if [[ "x$WANT_GTK" = "xgtk" ]]; then
   AM_PATH_GTK(1.2.0, [
     GUI_CFLAGS="$GTK_CFLAGS"
     GUI_LIBS="$GTK_LIBS"
-    dnl somehow, <gnome-i18n.h> would redefine gettext() to nothing if
-    dnl ENABLE_NLS is not set, thusly conflicting with C++ <string> which
-    dnl includes <libintl.h>
-    AM_GNU_GETTEXT
     B2_PATH_GNOMEUI([
       AC_DEFINE(HAVE_GNOMEUI, 1, [Define if libgnomeui is available.])
       GUI_CFLAGS="$GUI_CFLAGS $GNOMEUI_CFLAGS"
@@ -588,7 +590,8 @@ dnl Check for headers and functions related to pty support (sshpty.c)
 dnl From openssh-3.2.2p1 configure.ac
 
 AC_CHECK_HEADERS(strings.h login.h sys/bsdtty.h sys/stat.h util.h pty.h)
-AC_CHECK_FUNCS(_getpty vhangup strlcpy)
+AC_SEARCH_LIBS([openpty], [util bsd])
+AC_CHECK_FUNCS(_getpty openpty vhangup strlcpy)
 
 case "$host" in
 *-*-hpux10.26)
@@ -611,7 +614,6 @@ mips-sony-bsd|mips-sony-newsos4)
 	;;
 *-*-darwin*)
 	no_dev_ptmx=1
-	LIBS="$LIBS -lstdc++"
 	;;
 *-*-freebsd*)
 	no_dev_ptmx=1
@@ -725,6 +727,7 @@ AC_CHECK_FRAMEWORK(AppKit, [])
 AC_CHECK_FRAMEWORK(Carbon, [#include <Carbon/Carbon.h>])
 AC_CHECK_FRAMEWORK(IOKit, [#include <IOKit/IOKitLib.h>])
 AC_CHECK_FRAMEWORK(CoreFoundation, [#include <CoreFoundation/CoreFoundation.h>])
+AC_CHECK_FRAMEWORK(Metal, [])
 
 dnl Select system-dependant source files.
 SERIALSRC=serial_unix.cpp
@@ -822,6 +825,13 @@ if [[ -n "$CAN_SLIRP" ]]; then
 fi
 AC_SUBST(SLIRP_SRCS)
 
+dnl Is libvdeplug available?
+have_vdeplug=no
+AS_IF([test "x$with_vdeplug" = "xyes"], [
+  have_vdeplug=yes
+  AC_CHECK_LIB(vdeplug, vde_close, [], [have_vdeplug=no])
+])
+
 if [[ "x$WANT_MACOSX_GUI" = "xyes" ]]; then
   CPPFLAGS="$CPPFLAGS -I../MacOSX"
   LIBS="$LIBS -framework CoreAudio -framework AudioUnit -framework AudioToolbox"
@@ -898,7 +908,7 @@ fi
 dnl BINCUE overrides
 
 if [[ "x$have_bincue" = "xyes" ]]; then
-  EXTRASYSSRCS="$EXTRASYSSRCS bincue_unix.cpp"
+  EXTRASYSSRCS="$EXTRASYSSRCS bincue.cpp"
 fi
 
 dnl libvhd overrides
@@ -1378,7 +1388,6 @@ AC_PATH_PROG([BLESS], "true")
 dnl Check for linker script support
 case $target_os:$target_cpu in
 linux*:i?86)    LINKER_SCRIPT_FLAGS="-Wl,-T,ldscripts/linux-i386.ld";;
-linux*:x86_64)  LINKER_SCRIPT_FLAGS="-Wl,-T,ldscripts/linux-x86_64.ld";;
 linux*:powerpc) LINKER_SCRIPT_FLAGS="-Wl,-T,ldscripts/linux-ppc.ld";;
 netbsd*:i?86)   LINKER_SCRIPT_FLAGS="-Wl,-T,ldscripts/linux-i386.ld";;
 freebsd*:i?86)  LINKER_SCRIPT_FLAGS="-Wl,-T,ldscripts/freebsd-i386.ld";;
@@ -1463,6 +1472,15 @@ fi
 dnl Banked Memory Addressing mode is not supported by the JIT compiler
 if [[ "x$WANT_JIT" = "xyes" -a "x$ADDRESSING_MODE" = "xmemory banks" ]]; then
   AC_MSG_ERROR([Sorry, the JIT Compiler requires Direct Addressing, at least])
+fi
+
+if [[ "x$OS_TYPE" = "xdarwin" ]]; then
+  WANT_VOSF=no
+  LDFLAGS="$LDFLAGS -Wl,-no_pie -pagezero_size 0x1000"
+fi
+
+if [[ "x$OS_TYPE" = "xlinux" ]]; then
+  LDFLAGS="$LDFLAGS -no-pie"
 fi
 
 dnl Enable VOSF screen updates with this feature is requested and feasible
@@ -1639,7 +1657,7 @@ elif [[ "x$WANT_NATIVE_M68K" = "xyes" ]]; then
 fi
 
 dnl Enable JIT compiler, if possible.
-if [[ "x$WANT_JIT" = "xyes" -a "x$CAN_JIT" ]]; then
+if [[ "x$WANT_JIT" = "xyes" -a "x$CAN_JIT" = "xyes" ]]; then
   JITSRCS="$JITSRCS ../uae_cpu/compiler/compemu_support.cpp ../uae_cpu/compiler/compemu_fpp.cpp compstbl.o cpustbl_nf.o"
   DEFINES="$DEFINES -DUSE_JIT -DUSE_JIT_FPU"
   
@@ -1887,6 +1905,7 @@ echo SDL support ............................ : $SDL_SUPPORT
 echo SDL major-version ...................... : $WANT_SDL_VERSION_MAJOR
 echo BINCUE support ......................... : $have_bincue
 echo LIBVHD support ......................... : $have_libvhd
+echo VDE support ............................ : $have_vdeplug
 echo XFree86 DGA support .................... : $WANT_XF86_DGA
 echo XFree86 VidMode support ................ : $WANT_XF86_VIDMODE
 echo fbdev DGA support ...................... : $WANT_FBDEV_DGA

@@ -36,9 +36,6 @@ prefs_desc platform_prefs_items[] = {
 	{"keycodefile", TYPE_STRING, false,    "path of keycode translation file"},
 	{"mousewheelmode", TYPE_INT32, false,  "mouse wheel support mode (0=page up/down, 1=cursor up/down)"},
 	{"mousewheellines", TYPE_INT32, false, "number of lines to scroll in mouse wheel mode 1"},
-#ifdef HAVE_SIGSEGV_SKIP_INSTRUCTION
-	{"ignoresegv", TYPE_BOOLEAN, false,    "ignore illegal memory accesses"},
-#endif
 	{"idlewait", TYPE_BOOLEAN, false,      "sleep when idle"},
 	{"keycodes", TYPE_BOOLEAN, false,      "use keycodes rather than keysyms to decode keyboard"},
 	{"keycodefile", TYPE_STRING, false,    "path of keycode translation file"},
@@ -57,6 +54,10 @@ prefs_desc platform_prefs_items[] = {
 	{"tcp_port", TYPE_STRING, false,                "TCP ports list"},
 	{"portfile0", TYPE_STRING, false,               "output file for serial port 0"},
 	{"portfile1", TYPE_STRING, false,               "output file for serial port 1"},
+#ifdef USE_SDL_VIDEO
+	{"sdlrender", TYPE_STRING, false,      "SDL_Renderer driver (\"auto\", \"software\" (may be faster), etc.)"},
+	{"sdl_vsync", TYPE_BOOLEAN, false,     "Make SDL_Renderer vertical sync frames to host (eg. with software renderer)"},
+#endif
 
 	{NULL, TYPE_END, false, NULL} // End of list
 };
@@ -131,9 +132,6 @@ void AddPlatformPrefsDefaults(void)
 	PrefsReplaceInt32("mousewheellines", 3);
 	PrefsAddInt32("windowmodes", 3);
 	PrefsAddInt32("screenmodes", 0x3f);
-#ifdef HAVE_SIGSEGV_SKIP_INSTRUCTION
-	PrefsAddBool("ignoresegv", false);
-#endif
 	PrefsAddBool("idlewait", true);
 	PrefsReplaceBool("etherpermanentaddress", true);
 	PrefsReplaceInt32("ethermulticastmode", 0);
@@ -143,4 +141,8 @@ void AddPlatformPrefsDefaults(void)
 	PrefsReplaceString("serialb", "COM2");
 	PrefsReplaceString("portfile0", "C:\\B2TEMP0.OUT");
 	PrefsReplaceString("portfile1", "C:\\B2TEMP1.OUT");
+#ifdef USE_SDL_VIDEO
+	PrefsReplaceString("sdlrender", "software");
+	PrefsReplaceBool("sdl_vsync", false);
+#endif
 }

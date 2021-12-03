@@ -681,7 +681,11 @@
 #define SIZEOF_LONG 8
 
 /* The size of `long double', as computed by sizeof. */
+#ifdef CPU_x86_64
 #define SIZEOF_LONG_DOUBLE 16
+#else
+#define SIZEOF_LONG_DOUBLE 8
+#endif
 
 /* The size of `long long', as computed by sizeof. */
 #define SIZEOF_LONG_LONG 8
@@ -815,7 +819,34 @@
    <inttypes.h> don't define. */
 /* #undef uintmax_t */
 
+#ifndef CPU_x86_64
+#define UPDATE_UAE
+#endif
+
+#ifdef UPDATE_UAE
+#define DIRECT_ADDRESSING	1
+#define CPU_64_BIT
+#define USE_INLINING
+#ifdef CPU_x86_64
 #define FPU_IEEE
+#define WINUAE_ARANYM
+#else
+#define FPU_MPFR
+#endif
+#else
+#define FPU_IEEE
+#endif
+
 #define VIDEO_ROOTLESS
+
+#if USE_JIT
+#define DIRECT_ADDRESSING	1
+#define USE_JIT_FPU
+#define X86_64_ASSEMBLY
+#define OPTIMIZED_FLAGS
+#endif
+
+#define ENABLE_MACOSX_ETHERHELPER
+#define BINCUE              1
 
 #endif

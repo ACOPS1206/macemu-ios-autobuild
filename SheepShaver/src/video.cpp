@@ -46,6 +46,7 @@ uint32 screen_base = 0;				// Frame buffer base address
 int cur_mode;						// Number of current video mode (index in VModes array)
 int display_type = DIS_INVALID;		// Current display type
 rgb_color mac_pal[256];
+rgb_color mac_gamma[256];
 uint8 remap_mac_be[256];
 uint8 MacCursor[68] = {16, 1};	// Mac cursor image
 
@@ -211,6 +212,10 @@ static bool allocate_gamma_table(VidLocals *csSave, uint32 size)
 	return true;
 }
 
+ static inline uint8 max(uint8 a, uint8 b) {
+	 return a > b? a : b;
+ }
+
 static int16 set_gamma(VidLocals *csSave, uint32 gamma)
 {
 	if (gamma == 0) { // Build linear ramp, 256 entries
@@ -229,9 +234,12 @@ static int16 set_gamma(VidLocals *csSave, uint32 gamma)
 
 		// Build the linear ramp
 		uint32 p = csSave->gammaTable + gFormulaData;
-		for (int i=0; i<256; i++)
+		
+		for (int i=0; i<256; i++) {
 			WriteMacInt8(p + i, i);
-
+			mac_gamma[i].red = mac_gamma[i].green = mac_gamma[i].blue = i;
+		}
+		video_set_gamma(256);
 	} else { // User-supplied gamma table
 
 		// Validate header
@@ -256,6 +264,39 @@ static int16 set_gamma(VidLocals *csSave, uint32 gamma)
 
 		// Copy table
 		Mac2Mac_memcpy(csSave->gammaTable, gamma, size);
+		
+		// Save new gamma data for video impl
+		if (data_width != 8) {
+			// FIXME: handle bit-packed data
+		} else {
+			uint32 p = csSave->gammaTable + gFormulaData + gFormulaSize;
+
+			uint32 p_red;
+			uint32 p_green;
+			uint32 p_blue;
+			
+			// make values increasing as some implementations really don't like it when gamma tables aren't
+			uint8 max_red = 0;
+			uint8 max_green = 0;
+			uint8 max_blue = 0;
+					
+			if (chan_cnt == 3) {
+				p_red = p;
+				p_green = p + data_cnt;
+				p_blue = p + data_cnt * 2;
+			} else {
+				p_red = p_green = p_blue = p;
+			}
+			for (int i=0; i < data_cnt; i++) {
+				max_red = max(max_red, ReadMacInt8(p_red++));
+				max_green = max(max_green, ReadMacInt8(p_green++));
+				max_blue = max(max_blue, ReadMacInt8(p_blue++));
+				mac_gamma[i].red = max_red;
+				mac_gamma[i].green = max_green;
+				mac_gamma[i].blue = max_blue;
+			}
+		}
+		video_set_gamma(data_cnt);
 	}
 	return noErr;
 }
@@ -736,7 +777,7 @@ static int16 VideoStatus(uint32 pb, VidLocals *csSave)
 
 		case cscGetNextResolution: {
 			D(bug("GetNextResolution \n"));
-			int work_id = ReadMacInt32(param + csPreviousDisplayModeID);
+			unsigned int work_id = ReadMacInt32(param + csPreviousDisplayModeID);
 			switch (work_id) {
 				case kDisplayModeIDCurrent:
 					work_id = csSave->saveData;
@@ -838,6 +879,7 @@ static int16 VideoStatus(uint32 pb, VidLocals *csSave)
 					WriteMacInt16(vpb + vpVersion, 0);		// Pixel Map version number
 					WriteMacInt16(vpb + vpPackType, 0);
 					WriteMacInt32(vpb + vpPackSize, 0);
+					WriteMacInt32(vpb + vpPlaneBytes, 0);
 					WriteMacInt32(vpb + vpHRes, 0x00480000);	// horiz res of the device (ppi)
 					WriteMacInt32(vpb + vpVRes, 0x00480000);	// vert res of the device (ppi)
 					switch (VModes[i].viAppleMode) {

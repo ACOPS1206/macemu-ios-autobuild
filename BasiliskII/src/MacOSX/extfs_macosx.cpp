@@ -252,7 +252,7 @@ static int open_rsrc(const char *path, int flag)
 	make_rsrc_path(path, rsrc_path);
 
 	int fd = open(rsrc_path, flag);
-	if (fd < 0 && flag == O_WRONLY) fd = open(rsrc_path, O_WRONLY | O_CREAT); // for APFS
+	if (fd < 0 && (flag == O_WRONLY || flag == O_RDWR)) fd = open(rsrc_path, flag | O_CREAT); // for APFS
 	return fd;
 }
 
@@ -626,11 +626,11 @@ const char *convert_string(const char *str, CFStringEncoding from, CFStringEncod
 // Convert from the host OS filename encoding to MacRoman
 const char *host_encoding_to_macroman(const char *filename)
 {
-	return convert_string(filename, kCFStringEncodingUTF8, kCFStringEncodingMacRoman);
+	return convert_string(filename, kCFStringEncodingUTF8, PrefsFindInt32("name_encoding"));
 }
 
 // Convert from MacRoman to host OS filename encoding
 const char *macroman_to_host_encoding(const char *filename)
 {
-	return convert_string(filename, kCFStringEncodingMacRoman, kCFStringEncodingUTF8);
+	return convert_string(filename, PrefsFindInt32("name_encoding"), kCFStringEncodingUTF8);
 }

@@ -142,6 +142,12 @@ user_string_def common_strings[] = {
 	{STR_SIZE_1024_LAB, "1024"},
 	{STR_SIZE_MAX_LAB, "Maximum"},
 	{STR_NOSOUND_CTRL, "Disable Sound Output"},
+	{STR_GRAPHICS_SDL_RENDER_DRIVER_CTRL, "Render Driver"},
+	{STR_SOFTWARE_LAB, "Software"},
+	{STR_OPENGL_LAB, "OpenGL"},
+	{STR_DIRECT3D_LAB, "Direct3D"},
+	{STR_GRAPHICS_SDL_VSYNC_CTRL, "Vertical Sync (Software)"},
+	{STR_DEFAULT_LAB, "Default"},
 
 	{STR_SERIAL_NETWORK_PANE_TITLE, "Serial/Network"},
 	{STR_SERPORTA_CTRL, "Modem Port"},
@@ -171,9 +177,7 @@ user_string_def common_strings[] = {
 	{STR_JIT_68K_CTRL, "Enable built-in 68k DR Emulator (EXPERIMENTAL)"},
 
 	{STR_WINDOW_TITLE, "SheepShaver"},
-	{STR_WINDOW_TITLE_FROZEN, "SheepShaver *** FROZEN ***"},
-	{STR_WINDOW_TITLE_GRABBED, "SheepShaver (mouse grabbed, press Ctrl-F5 to release)"},
-	{STR_WINDOW_TITLE_GRABBED0, "SheepShaver (mouse grabbed, press "},
+	{STR_WINDOW_TITLE_GRABBED0, " (mouse grabbed, press "},
 	{STR_WINDOW_TITLE_GRABBED1, "Ctrl-"},
 #ifdef __APPLE__
 	{STR_WINDOW_TITLE_GRABBED2, "Opt-"},

@@ -79,13 +79,13 @@ inline video_depth DepthModeForPixelDepth(int depth)
 // Returns the name of a video_depth, or an empty string if the depth is unknown
 const char * NameOfDepth(video_depth depth);
 
-// Return a bytes-per-row value (assuming no padding) for the specified depth and pixel width
+// Return a bytes-per-row value (assuming enough bytes to fit the bits but no further padding) for the specified depth and pixel width
 inline uint32 TrivialBytesPerRow(uint32 width, video_depth depth)
 {
 	switch (depth) {
-		case VDEPTH_1BIT: return width / 8;
-		case VDEPTH_2BIT: return width / 4;
-		case VDEPTH_4BIT: return width / 2;
+		case VDEPTH_1BIT: return (width + 7) / 8;
+		case VDEPTH_2BIT: return (width + 3) / 4;
+		case VDEPTH_4BIT: return (width + 1) / 2;
 		case VDEPTH_8BIT: return width;
 		case VDEPTH_16BIT: return width * 2;
 		case VDEPTH_32BIT: return width * 4;
@@ -205,8 +205,8 @@ private:
 	// Set palette to 50% gray
 	void set_gray_palette(void);
 
-	// Load gamma-corrected black-to-white ramp to palette for direct-color mode
-	void load_ramp_palette(void);
+	// Load gamma-corrected black-to-white ramp
+	void load_gamma_ramp(void);
 
 	// Allocate gamma table of specified size
 	bool allocate_gamma_table(int size);
@@ -250,8 +250,10 @@ public:
 	virtual void switch_to_current_mode(void) = 0;
 
 	// Called by the video driver to set the color palette (in indexed modes)
-	// or the gamma table (in direct modes)
 	virtual void set_palette(uint8 *pal, int num) = 0;
+	
+	// Called by the video driver to set the gamma table
+	virtual void set_gamma(uint8 *gamma, int num) = 0;
 };
 
 // Vector of pointers to available monitor descriptions, filled by VideoInit()

@@ -66,13 +66,13 @@ inline int DepthModeForPixelDepth(int depth)
 	}
 }
 
-// Return a bytes-per-row value (assuming no padding) for the specified depth and pixel width
+// Return a bytes-per-row value (assuming enough bytes to fit the bits but no further padding) for the specified depth and pixel width
 inline uint32 TrivialBytesPerRow(uint32 width, int mode)
 {
 	switch (mode) {
-	case APPLE_1_BIT: return width / 8;
-	case APPLE_2_BIT: return width / 4;
-	case APPLE_4_BIT: return width / 2;
+	case APPLE_1_BIT: return (width + 7) / 8;
+	case APPLE_2_BIT: return (width + 3) / 4;
+	case APPLE_4_BIT: return (width + 1) / 2;
 	case APPLE_8_BIT: return width;
 	case APPLE_16_BIT: return width * 2;
 	case APPLE_32_BIT: return width * 4;
@@ -106,6 +106,7 @@ extern uint32 screen_base;			// Frame buffer base address
 extern int cur_mode;					// Number of current video mode (index in VModes array)
 extern int display_type;			// Current display type (see above)
 extern rgb_color mac_pal[256];
+extern rgb_color mac_gamma[256];
 extern uint8 remap_mac_be[256];
 extern uint8 MacCursor[68];
 
@@ -140,6 +141,7 @@ extern void VideoInstallAccel(void);
 extern void VideoQuitFullScreen(void);
 
 extern void video_set_palette(void);
+extern void video_set_gamma(int n_colors);
 extern void video_set_cursor(void);
 extern bool video_can_change_cursor(void);
 extern int16 video_mode_change(VidLocals *csSave, uint32 ParamPtr);

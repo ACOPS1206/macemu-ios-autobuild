@@ -42,6 +42,7 @@
 // somehow util_windows undefines min
 #define min(x,y) ((x) < (y) ? (x) : (y))
 #include "libslirp.h"
+#include "ctl.h"
 
 // Define to let the slirp library determine the right timeout for select()
 #define USE_SLIRP_TIMEOUT 1
@@ -144,6 +145,8 @@ static LPPACKET send_queue = 0;
 static CRITICAL_SECTION wpool_csection;
 static LPPACKET write_packet_pool = 0;
 
+// Calling slirp functions from multiple threads concurrently is unsafe; guard it
+static CRITICAL_SECTION slirp_single_call_csection;
 
 
 // Try to deal with echos. Protected by fetch_csection.
@@ -198,6 +201,8 @@ static int16 ether_do_add_multicast(uint8 *addr);
 static int16 ether_do_del_multicast(uint8 *addr);
 static int16 ether_do_write(uint32 arg);
 static void ether_do_interrupt(void);
+static void slirp_add_redirs();
+static int slirp_add_redir(const char *redir_str);
 
 
 /*
@@ -261,6 +266,7 @@ bool ether_init(void)
 			WarningAlert(GetString(STR_SLIRP_NO_DNS_FOUND_WARN));
 			return false;
 		}
+		slirp_add_redirs();
 	}
 
 	// Open ethernet device
@@ -416,6 +422,8 @@ bool ether_init(void)
 	InitializeCriticalSectionAndSpinCount( &send_csection, 5000 );
 	InitializeCriticalSectionAndSpinCount( &wpool_csection, 5000 );
 
+	InitializeCriticalSection( &slirp_single_call_csection );
+
 	ether_th = (HANDLE)_beginthreadex( 0, 0, ether_thread_feed_int, 0, 0, &ether_tid );
 	if (!ether_th) {
 		D(bug("Failed to create ethernet thread\n"));
@@ -565,6 +573,7 @@ void ether_exit(void)
 	DeleteCriticalSection( &queue_csection );
 	DeleteCriticalSection( &send_csection );
 	DeleteCriticalSection( &wpool_csection );
+	DeleteCriticalSection( &slirp_single_call_csection );
 
 	D(bug("Freeing read packets\n"));
 	free_read_packets();
@@ -1018,7 +1027,9 @@ unsigned int WINAPI ether_thread_write_packets(void *arg)
 				}
 				break;
 			case NET_IF_SLIRP:
+				EnterCriticalSection( &slirp_single_call_csection );
 				slirp_input((uint8 *)Packet->Buffer, Packet->Length);
+				LeaveCriticalSection( &slirp_single_call_csection );
 				Packet->bIoComplete = TRUE;
 				recycle_write_packet(Packet);
 				break;
@@ -1372,7 +1383,9 @@ unsigned int WINAPI slirp_receive_func(void *arg)
 		FD_ZERO(&rfds);
 		FD_ZERO(&wfds);
 		FD_ZERO(&xfds);
+		EnterCriticalSection( &slirp_single_call_csection );
 		timeout = slirp_select_fill(&nfds, &rfds, &wfds, &xfds);
+		LeaveCriticalSection( &slirp_single_call_csection );
 #if ! USE_SLIRP_TIMEOUT
 		timeout = 10000;
 #endif
@@ -1388,8 +1401,11 @@ unsigned int WINAPI slirp_receive_func(void *arg)
 			tv.tv_usec = timeout;
 			ret = select(0, &rfds, &wfds, &xfds, &tv);
 		}
-		if (ret >= 0)
+		if (ret >= 0) {
+			EnterCriticalSection( &slirp_single_call_csection );
 			slirp_select_poll(&rfds, &wfds, &xfds);
+			LeaveCriticalSection( &slirp_single_call_csection );
+		}
 	}
 
 	D(bug("slirp_receive_func exit\n"));
@@ -1628,6 +1644,97 @@ static void ether_do_interrupt(void)
 	}
 }
 
+// Helper function for port forwarding
+static int get_str_sep(char *buf, int buf_size, const char **pp, int sep)
+{
+	const char *p, *p1;
+	int len;
+	p = *pp;
+	p1 = strchr(p, sep);
+	if (!p1)
+		return -1;
+	len = p1 - p;
+	p1++;
+	if (buf_size > 0) {
+		if (len > buf_size - 1)
+			len = buf_size - 1;
+		memcpy(buf, p, len);
+		buf[len] = '\0';
+	}
+	*pp = p1;
+	return 0;
+}
+
+// Set up port forwarding for slirp
+static void slirp_add_redirs()
+{
+	int index = 0;
+	const char *str;
+	while ((str = PrefsFindString("redir", index++)) != NULL) {
+		slirp_add_redir(str);
+	}
+}
+
+// Add a port forward/redirection for slirp
+static int slirp_add_redir(const char *redir_str)
+{
+	// code adapted from qemu source
+	struct in_addr guest_addr = {0};
+	int host_port, guest_port;
+	const char *p;
+	char buf[256];
+	int is_udp;
+	char *end;
+	char str[256];
+
+	p = redir_str;
+	if (!p || get_str_sep(buf, sizeof(buf), &p, ':') < 0) {
+		goto fail_syntax;
+	}
+	if (!strcmp(buf, "tcp") || buf[0] == '\0') {
+		is_udp = 0;
+	} else if (!strcmp(buf, "udp")) {
+		is_udp = 1;
+	} else {
+		goto fail_syntax;
+	}
+
+	if (get_str_sep(buf, sizeof(buf), &p, ':') < 0) {
+		goto fail_syntax;
+	}
+	host_port = strtol(buf, &end, 0);
+	if (*end != '\0' || host_port < 1 || host_port > 65535) {
+		goto fail_syntax;
+	}
+
+	if (get_str_sep(buf, sizeof(buf), &p, ':') < 0) {
+		goto fail_syntax;
+	}
+	// 0.0.0.0 doesn't seem to work, so default to a client address
+	// if none is specified
+	if (buf[0] == '\0' ?
+			!inet_pton(AF_INET, CTL_LOCAL, &guest_addr) :
+			!inet_pton(AF_INET, buf, &guest_addr)) {
+		goto fail_syntax;
+	}
+
+	guest_port = strtol(p, &end, 0);
+	if (*end != '\0' || guest_port < 1 || guest_port > 65535) {
+		goto fail_syntax;
+	}
+
+	if (slirp_redir(is_udp, host_port, guest_addr, guest_port) < 0) {
+		sprintf(str, "could not set up host forwarding rule '%s'", redir_str);
+		WarningAlert(str);
+		return -1;
+	}
+	return 0;
+
+ fail_syntax:
+	sprintf(str, "invalid host forwarding rule '%s'", redir_str);
+	WarningAlert(str);
+	return -1;
+}
 #if DEBUG
 #pragma optimize("",on)
 #endif
