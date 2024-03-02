@@ -74,6 +74,7 @@ static uint32 low_mem_map = 0;
 static bool dragging_region = false;
 static uint32 drag_region_ptr = 0;
 static size_t mask_n = 0;
+bool showing_desktop = false;
 
 static void MyPatchTrap(int trap, uint32 ptr) {
     M68kRegisters r;
@@ -393,9 +394,14 @@ bool update_display_mask(SDL_Window *window, int w, int h, int mag_rate) {
         display_mask.w = w;
         display_mask.h = h;
         display_mask.cursorMask = &display_mask.pixels[display_mask.w * display_mask.h];
-        
+
         // update whole screen
         make_window_transparent(window);
+        SDL_Rect rect = {.x = 0, .y = 0, .w = w, .h = h};
+        update_sdl_video(NULL, 1, &rect);
+        mask_rects.push_back(rect);
+        memset(display_mask.pixels, 0xff, 2 * display_mask.w * display_mask.h);
+    } else if (showing_desktop) {
         SDL_Rect rect = {.x = 0, .y = 0, .w = w, .h = h};
         update_sdl_video(NULL, 1, &rect);
         mask_rects.push_back(rect);

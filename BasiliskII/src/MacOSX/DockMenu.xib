@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="22505" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+    <dependencies>
+        <deployment identifier="macosx"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="22505"/>
+    </dependencies>
+    <objects>
+        <customObject id="-2" userLabel="File's Owner" customClass="NSApplication">
+            <connections>
+                <outlet property="dockMenu" destination="oLb-Ok-FxE" id="IW4-zE-3ud"/>
+            </connections>
+        </customObject>
+        <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
+        <customObject id="-3" userLabel="Application" customClass="NSObject"/>
+        <menu id="oLb-Ok-FxE">
+            <items>
+                <menuItem title="Show Desktop" id="yUN-ZW-BhM">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <connections>
+                        <action selector="toggleDesktop:" target="3qk-Y1-0fF" id="rgw-37-qTE"/>
+                    </connections>
+                </menuItem>
+            </items>
+            <point key="canvasLocation" x="-254" y="-52"/>
+        </menu>
+        <customObject id="3qk-Y1-0fF" customClass="DockMenuController">
+            <connections>
+                <outlet property="toggleDesktopMenuItem" destination="yUN-ZW-BhM" id="IOz-Gs-Kgs"/>
+            </connections>
+        </customObject>
+    </objects>
+</document>

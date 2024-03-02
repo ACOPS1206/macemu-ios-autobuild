@@ -28,5 +28,7 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>Controller</string>
+	<key>AppleDockMenu</key>
+	<string>DockMenu</string>
 </dict>
 </plist>

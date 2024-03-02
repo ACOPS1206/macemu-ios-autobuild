@@ -209,3 +209,27 @@ int host_menubar_size()
 { @autoreleasepool {
     return [[NSApp mainMenu] menuBarHeight];
 }}
+
+extern bool showing_desktop;
+extern bool is_rootless();
+
+@interface DockMenuController : NSObject
+{
+    IBOutlet NSMenuItem *toggleDesktopMenuItem;
+}
+@end
+
+@implementation DockMenuController
+
+- (void)awakeFromNib
+{
+    toggleDesktopMenuItem.hidden = !is_rootless();
+}
+
+- (IBAction)toggleDesktop:(id)sender
+{
+    showing_desktop ^= true;
+    toggleDesktopMenuItem.title = showing_desktop ? @"Hide Desktop" : @"Show Desktop";
+}
+
+@end

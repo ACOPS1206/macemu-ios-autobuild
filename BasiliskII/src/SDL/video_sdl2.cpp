@@ -967,7 +967,9 @@ static int present_sdl_video()
 	
 #ifdef VIDEO_ROOTLESS
     // Apply mask
-    apply_display_mask(host_surface, sdl_update_video_rect, sdl_window);
+    if (display_type == DISPLAY_ROOTLESS) {
+        apply_display_mask(host_surface, sdl_update_video_rect, sdl_window);
+    }
 #endif
 
     // Update the host OS' texture
@@ -1820,6 +1822,13 @@ static bool is_fullscreen(SDL_Window * window)
 #endif
 }
 
+#ifdef VIDEO_ROOTLESS
+bool is_rootless()
+{
+    return display_type == DISPLAY_ROOTLESS;
+}
+#endif
+
 #ifdef SHEEPSHAVER
 void VideoVBL(void)
 {
@@ -1855,10 +1864,12 @@ void VideoInterrupt(void)
 		do_toggle_fullscreen();
 
 #ifdef VIDEO_ROOTLESS
-	bool f = update_display_mask(sdl_window, host_surface->w, host_surface->h, get_mag_rate());
-	spin_lock(&force_redraw_lock);
-	force_redraw |= f;
-	spin_unlock(&force_redraw_lock);
+    if (display_type == DISPLAY_ROOTLESS) {
+        bool f = update_display_mask(sdl_window, host_surface->w, host_surface->h, get_mag_rate());
+        spin_lock(&force_redraw_lock);
+        force_redraw |= f;
+        spin_unlock(&force_redraw_lock);
+    }
 #endif
 	present_sdl_video();
 
@@ -2694,10 +2705,13 @@ static void update_display_static(driver_base *drv)
 static void update_display_static_bbox(driver_base *drv)
 {
 #ifdef VIDEO_ROOTLESS
-	spin_lock(&force_redraw_lock);
-	bool redraw = force_redraw;
-	force_redraw = false;
-	spin_unlock(&force_redraw_lock);
+    bool redraw = false;
+    if (display_type == DISPLAY_ROOTLESS) {
+        spin_lock(&force_redraw_lock);
+        redraw = force_redraw;
+        force_redraw = false;
+        spin_unlock(&force_redraw_lock);
+    }
 #endif
 
 	const VIDEO_MODE &mode = drv->mode;
