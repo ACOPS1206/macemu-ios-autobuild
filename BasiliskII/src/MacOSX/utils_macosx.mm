@@ -132,7 +132,7 @@ void make_window_transparent(SDL_Window * window)
     [[NSOpenGLContext currentContext] setValues:&zero forParameter:NSOpenGLCPSurfaceOpacity];
 }}
 
-void update_window_mask_rects(SDL_Window * window, int h, const std::vector<SDL_Rect> &rects)
+void update_window_mask_rects(SDL_Window * window, int h, const std::vector<SDL_Rect> &rects, int mag_rate)
 { @autoreleasepool {
     CAShapeLayer *maskLayer = (CAShapeLayer*)SDL_GetWindowData(window, "maskLayer");
     CGMutablePathRef path = CGPathCreateMutable();
@@ -141,7 +141,7 @@ void update_window_mask_rects(SDL_Window * window, int h, const std::vector<SDL_
         CGPathAddRect(path, NULL, CGRectMake(rect.x, rect.y, rect.w, rect.h));
     }
     maskLayer.path = path;
-    maskLayer.affineTransform = CGAffineTransformScale(CGAffineTransformMakeTranslation(0, h), 1.0, -1.0);
+    maskLayer.affineTransform = CGAffineTransformScale(CGAffineTransformMakeTranslation(0, h * mag_rate), mag_rate, -mag_rate);
     CGPathRelease(path);
 }}
 

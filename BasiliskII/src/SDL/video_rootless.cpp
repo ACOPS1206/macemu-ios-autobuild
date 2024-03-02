@@ -365,7 +365,7 @@ void WalkLayerHierarchy(uint32 layerPtr, int level, std::vector<SDL_Rect> &mask_
     if (nextWindow) WalkLayerHierarchy(nextWindow, level, mask_rects);
 }
 
-bool update_display_mask(SDL_Window *window, int w, int h) {
+bool update_display_mask(SDL_Window *window, int w, int h, int mag_rate) {
     if (rootless_proc_ptr == 0) {
         return false;
     }
@@ -469,9 +469,9 @@ bool update_display_mask(SDL_Window *window, int w, int h) {
         SDL_ShowCursor(SDL_ENABLE);
     }
     
-    extern void update_window_mask_rects(SDL_Window * window, int h, const std::vector<SDL_Rect> &rects);
-    update_window_mask_rects(window, display_mask.h, mask_rects);
-	
+    extern void update_window_mask_rects(SDL_Window * window, int h, const std::vector<SDL_Rect> &rects, int mag_rate);
+    update_window_mask_rects(window, display_mask.h, mask_rects, mag_rate);
+
 	bool f = mask_rects.size() > mask_n;
 	mask_n = mask_rects.size();
 	return f;

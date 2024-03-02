@@ -72,7 +72,7 @@
 #include "cdrom.h"
 
 #ifdef VIDEO_ROOTLESS
-extern bool update_display_mask(SDL_Window * window, int w, int h);
+extern bool update_display_mask(SDL_Window * window, int w, int h, int m);
 extern void apply_display_mask(SDL_Surface * host_surface, SDL_Rect update_rect, SDL_Window * window);
 extern bool cursor_point_opaque(void);
 static bool force_redraw = false;
@@ -769,12 +769,12 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 #endif
 	
 	if (!sdl_window) {
+        int m = get_mag_rate();
 #ifdef VIDEO_ROOTLESS
-        if (display_type == DISPLAY_ROOTLESS && window_width == sdl_display_width()) {
+        if (display_type == DISPLAY_ROOTLESS && window_width * m == sdl_display_width()) {
             window_flags |= SDL_WINDOW_BORDERLESS;
         }
 #endif
-		int m = get_mag_rate();
 		sdl_window = SDL_CreateWindow(
 			"",
 			SDL_WINDOWPOS_UNDEFINED,
@@ -1480,14 +1480,15 @@ bool VideoInit(bool classic)
         }
 #endif
 	}
+    int mag_rate = get_mag_rate();
 	if (default_width <= 0)
-		default_width = sdl_display_width();
-	else if (default_width > sdl_display_width())
-		default_width = sdl_display_width();
+		default_width = sdl_display_width() / mag_rate;
+	else if (default_width * mag_rate > sdl_display_width())
+		default_width = sdl_display_width() / mag_rate;
 	if (default_height <= 0)
-		default_height = sdl_display_height();
-	else if (default_height > sdl_display_height())
-		default_height = sdl_display_height();
+		default_height = sdl_display_height() / mag_rate;
+	else if (default_height * mag_rate > sdl_display_height())
+		default_height = sdl_display_height() / mag_rate;
 
 	// Mac screen depth follows X depth
 	screen_depth = 32;
@@ -1581,14 +1582,14 @@ bool VideoInit(bool classic)
             int h = video_modes[i].h;
             if (w == -2) {
                 // full screen without menu
-                w = display_width;
-                h = display_height - host_menubar_size();
+                w = display_width / mag_rate;
+                h = (display_height / mag_rate) - host_menubar_size();
             } else if (w == -3) {
                 // full screen with menu
-                w = display_width;
-                h = display_height;
+                w = display_width / mag_rate;
+                h = display_height / mag_rate;
             }
-            if (i > 0 && (w > display_width || h > display_height || (w == default_width && h == default_height)))
+            if (i > 0 && (w * mag_rate > display_width || h * mag_rate > display_height || (w == default_width && h == default_height)))
                 continue;
             for (int d = VIDEO_DEPTH_1BIT; d <= default_depth; d++)
                 add_mode(display_type, w, h, video_modes[i].resolution_id, TrivialBytesPerRow(w, (video_depth)d), d);
@@ -1854,7 +1855,7 @@ void VideoInterrupt(void)
 		do_toggle_fullscreen();
 
 #ifdef VIDEO_ROOTLESS
-	bool f = update_display_mask(sdl_window, host_surface->w, host_surface->h);
+	bool f = update_display_mask(sdl_window, host_surface->w, host_surface->h, get_mag_rate());
 	spin_lock(&force_redraw_lock);
 	force_redraw |= f;
 	spin_unlock(&force_redraw_lock);
