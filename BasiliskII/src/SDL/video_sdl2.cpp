@@ -736,7 +736,7 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 	int window_width = width;
 	int window_height = height;
 	Uint32 window_flags = SDL_WINDOW_ALLOW_HIGHDPI;
-	const int window_flags_to_monitor = SDL_WINDOW_FULLSCREEN;
+	const int window_flags_to_monitor = SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS;
 	
 	if (flags & SDL_WINDOW_FULLSCREEN) {
 		SDL_DisplayMode desktop_mode;
@@ -769,7 +769,7 @@ static SDL_Surface *init_sdl_video(int width, int height, int depth, Uint32 flag
 	
 	if (!sdl_window) {
 #ifdef VIDEO_ROOTLESS
-        if (display_type == DISPLAY_ROOTLESS) {
+        if (display_type == DISPLAY_ROOTLESS && window_width == sdl_display_width()) {
             window_flags |= SDL_WINDOW_BORDERLESS;
         }
 #endif
@@ -1472,8 +1472,10 @@ bool VideoInit(bool classic)
 #ifdef VIDEO_ROOTLESS
         else if (strncmp(mode_str, "rootless", 8) == 0) {
             display_type = DISPLAY_ROOTLESS;
-            default_width = sdl_display_width();
-            default_height = sdl_display_height();
+            if (sscanf(mode_str, "rootless/%d/%d", &default_width, &default_height) != 2) {
+                default_width = sdl_display_width();
+                default_height = sdl_display_height();
+            }
         }
 #endif
 	}
@@ -1536,6 +1538,10 @@ bool VideoInit(bool classic)
 		{ 1152,  870, 0x84 },
 		{ 1280, 1024, 0x85 },
 		{ 1600, 1200, 0x86 },
+#ifdef VIDEO_ROOTLESS
+        { -2, 0, 0x87 },
+        { -3, 0, 0x88 },
+#endif
 		{ 0, }
 	};
 #endif
@@ -1550,7 +1556,7 @@ bool VideoInit(bool classic)
 			for (int i = 0; video_modes[i].w != 0; i++) {
 				const int w = video_modes[i].w;
 				const int h = video_modes[i].h;
-				if (i > 0 && (w >= default_width || h >= default_height))
+				if (i > 0 && (w < 0 || w >= default_width || h >= default_height))
 					continue;
 				for (int d = VIDEO_DEPTH_1BIT; d <= default_depth; d++)
 					add_mode(display_type, w, h, video_modes[i].resolution_id, TrivialBytesPerRow(w, (video_depth)d), d);
@@ -1560,17 +1566,28 @@ bool VideoInit(bool classic)
 		for (int i = 0; video_modes[i].w != 0; i++) {
 			const int w = video_modes[i].w;
 			const int h = video_modes[i].h;
-			if (i > 0 && (w >= default_width || h >= default_height))
+			if (i > 0 && (w < 0 || w >= default_width || h >= default_height))
 				continue;
 			for (int d = VIDEO_DEPTH_1BIT; d <= default_depth; d++)
 				add_mode(display_type, w, h, video_modes[i].resolution_id, TrivialBytesPerRow(w, (video_depth)d), d);
 		}
 #ifdef VIDEO_ROOTLESS
     } else if (display_type == DISPLAY_ROOTLESS) {
+        int display_width = sdl_display_width();
+        int display_height = sdl_display_height();
         for (int i = 0; video_modes[i].w != 0; i++) {
-            const int w = video_modes[i].w;
-            const int h = video_modes[i].h;
-            if (i > 0 && (w >= default_width || h >= default_height))
+            int w = video_modes[i].w;
+            int h = video_modes[i].h;
+            if (w == -2) {
+                // full screen without menu
+                w = display_width;
+                h = display_height - 24;
+            } else if (w == -3) {
+                // full screen with menu
+                w = display_width;
+                h = display_height;
+            }
+            if (i > 0 && (w > display_width || h > display_height || (w == default_width && h == default_height)))
                 continue;
             for (int d = VIDEO_DEPTH_1BIT; d <= default_depth; d++)
                 add_mode(display_type, w, h, video_modes[i].resolution_id, TrivialBytesPerRow(w, (video_depth)d), d);

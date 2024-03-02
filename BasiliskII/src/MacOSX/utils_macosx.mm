@@ -59,42 +59,52 @@ void disable_SDL2_macosx_menu_bar_keyboard_shortcuts() {
 }
 
 #ifdef VIDEO_ROOTLESS
+static NSWindow *lastKnownWindow = nil;
+
 void make_window_transparent(SDL_Window * window)
-{
+{ @autoreleasepool {
     if (!window) {
         return;
     }
-    
-    extern int native_menubar_size;
-    native_menubar_size = (int)[[NSApp mainMenu] menuBarHeight];
-    
+
     SDL_SysWMinfo wmInfo;
     SDL_VERSION(&wmInfo.version);
     if (!SDL_GetWindowWMInfo(window, &wmInfo)) {
         return;
     }
-    
+
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+        [nc addObserverForName:NSWindowDidBecomeKeyNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification * _Nonnull note) {
+            NSWindow *window = (NSWindow*)note.object;
+            if (window == lastKnownWindow) {
+                window.level = NSMainMenuWindowLevel+1;
+            }
+        }];
+        [nc addObserverForName:NSWindowDidResignKeyNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification * _Nonnull note) {
+            NSWindow *window = (NSWindow*)note.object;
+            // hack for window to be sent behind new key window
+            if (window == lastKnownWindow) {
+                [window setIsVisible:NO];
+                [window setLevel:NSNormalWindowLevel];
+                [window setIsVisible:YES];
+            }
+        }];
+    });
+
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     CGColorRef clearColor = [NSColor clearColor].CGColor;
     NSWindow *cocoaWindow = wmInfo.info.cocoa.window;
-    NSView *sdlView = cocoaWindow.contentView;
-	sdlView.wantsLayer = YES;
-    sdlView.layer.backgroundColor = [NSColor clearColor].CGColor;
-    if (SDL_GetWindowData(window, "observing") == NULL) {
-        NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
-        [nc addObserverForName:NSWindowDidBecomeKeyNotification object:cocoaWindow queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification * _Nonnull note) {
-            NSWindow *window = (NSWindow*)note.object;
-            window.level = NSMainMenuWindowLevel+1;
-        }];
-        [nc addObserverForName:NSWindowDidResignKeyNotification object:cocoaWindow queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification * _Nonnull note) {
-            NSWindow *window = (NSWindow*)note.object;
-            // hack for window to be sent behind new key window
-            [window setIsVisible:NO];
-            [window setLevel:NSNormalWindowLevel];
-            [window setIsVisible:YES];
-        }];
-        SDL_SetWindowData(window, "observing", nc);
+    if (cocoaWindow != lastKnownWindow) {
+        // who's keeping a reference to the window?
+        [lastKnownWindow close];
+        [lastKnownWindow release];
+        lastKnownWindow = [cocoaWindow retain];
     }
+    NSView *sdlView = cocoaWindow.contentView;
+    sdlView.wantsLayer = YES;
+    sdlView.layer.backgroundColor = [NSColor clearColor].CGColor;
     if (SDL_GetWindowData(window, "maskLayer") == NULL) {
         CALayer *maskLayer = [CAShapeLayer layer];
         sdlView.layer.mask = maskLayer;
@@ -107,7 +117,7 @@ void make_window_transparent(SDL_Window * window)
     if (cocoaWindow.isKeyWindow) {
         cocoaWindow.level = NSMainMenuWindowLevel+1;
     }
-    
+
     // make metal layer transparent
     for (NSView *view in sdlView.subviews) {
         if ([view.className isEqualToString:@"SDL_cocoametalview"]) {
@@ -120,10 +130,10 @@ void make_window_transparent(SDL_Window * window)
     // make OpenGL surface transparent
     GLint zero = 0;
     [[NSOpenGLContext currentContext] setValues:&zero forParameter:NSOpenGLCPSurfaceOpacity];
-}
+}}
 
 void update_window_mask_rects(SDL_Window * window, int h, const std::vector<SDL_Rect> &rects)
-{
+{ @autoreleasepool {
     CAShapeLayer *maskLayer = (CAShapeLayer*)SDL_GetWindowData(window, "maskLayer");
     CGMutablePathRef path = CGPathCreateMutable();
     for(auto it = rects.begin(); it != rects.end(); ++it) {
@@ -133,10 +143,10 @@ void update_window_mask_rects(SDL_Window * window, int h, const std::vector<SDL_
     maskLayer.path = path;
     maskLayer.affineTransform = CGAffineTransformScale(CGAffineTransformMakeTranslation(0, h), 1.0, -1.0);
     CGPathRelease(path);
-}
+}}
 
 void show_video_frame_with_mask(SDL_Window * window, SDL_Surface * surface)
-{
+{ @autoreleasepool {
     // this overrides the SDL view and sets the layer contents to a CGImage instead
     // it seems to be the only way to have a mask not made out of rectangles
     CALayer *screenLayer = (CALayer*)SDL_GetWindowData(window, "screenLayer");
@@ -144,10 +154,11 @@ void show_video_frame_with_mask(SDL_Window * window, SDL_Surface * surface)
         CGImageRelease((CGImageRef)screenLayer.contents);
     }
 
+    static CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     CGBitmapInfo bitmapInfo = surface->format->Amask == 0xff000000 ? kCGImageAlphaPremultipliedLast : kCGImageAlphaPremultipliedFirst;
-    CGImageRef image = CGImageCreate(surface->w, surface->h, 8, surface->format->BitsPerPixel, surface->pitch, CGColorSpaceCreateDeviceRGB(), bitmapInfo, CGDataProviderCreateWithData(NULL, surface->pixels, surface->w * surface->h * 4, NULL), NULL, false, kCGRenderingIntentDefault);
+    CGImageRef image = CGImageCreate(surface->w, surface->h, 8, surface->format->BitsPerPixel, surface->pitch, colorSpace, bitmapInfo, CGDataProviderCreateWithData(NULL, surface->pixels, surface->w * surface->h * 4, NULL), NULL, false, kCGRenderingIntentDefault);
     screenLayer.contents = (id)image;
-}
+}}
 #endif
 
 bool is_fullscreen_osx(SDL_Window * window)
@@ -192,4 +203,8 @@ bool MetalIsAvailable() {
 	bool r = dev != nil;
 	[dev release];
 	return r;
+}
+
+int host_menubar_size() {
+    return [[NSApp mainMenu] menuBarHeight];
 }
