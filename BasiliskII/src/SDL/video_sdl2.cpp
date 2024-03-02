@@ -77,6 +77,7 @@ extern void apply_display_mask(SDL_Surface * host_surface, SDL_Rect update_rect,
 extern bool cursor_point_opaque(void);
 static bool force_redraw = false;
 static spinlock_t force_redraw_lock = SPIN_LOCK_UNLOCKED;
+extern int host_menubar_size();
 #endif
 
 #define DEBUG 0
@@ -1581,7 +1582,7 @@ bool VideoInit(bool classic)
             if (w == -2) {
                 // full screen without menu
                 w = display_width;
-                h = display_height - 24;
+                h = display_height - host_menubar_size();
             } else if (w == -3) {
                 // full screen with menu
                 w = display_width;

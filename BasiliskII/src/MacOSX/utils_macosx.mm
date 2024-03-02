@@ -205,6 +205,7 @@ bool MetalIsAvailable() {
 	return r;
 }
 
-int host_menubar_size() {
+int host_menubar_size()
+{ @autoreleasepool {
     return [[NSApp mainMenu] menuBarHeight];
-}
+}}
