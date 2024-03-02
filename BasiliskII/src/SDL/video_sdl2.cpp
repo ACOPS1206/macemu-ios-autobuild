@@ -73,7 +73,7 @@
 
 #ifdef VIDEO_ROOTLESS
 extern bool update_display_mask(SDL_Window * window, int w, int h);
-extern void apply_display_mask(SDL_Surface * host_surface, SDL_Rect update_rect);
+extern void apply_display_mask(SDL_Surface * host_surface, SDL_Rect update_rect, SDL_Window * window);
 extern bool cursor_point_opaque(void);
 static bool force_redraw = false;
 static spinlock_t force_redraw_lock = SPIN_LOCK_UNLOCKED;
@@ -966,7 +966,7 @@ static int present_sdl_video()
 	
 #ifdef VIDEO_ROOTLESS
     // Apply mask
-    apply_display_mask(host_surface, sdl_update_video_rect);
+    apply_display_mask(host_surface, sdl_update_video_rect, sdl_window);
 #endif
 
     // Update the host OS' texture

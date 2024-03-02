@@ -99,6 +99,7 @@ void make_window_transparent(SDL_Window * window)
         CALayer *maskLayer = [CAShapeLayer layer];
         sdlView.layer.mask = maskLayer;
         SDL_SetWindowData(window, "maskLayer", maskLayer);
+        SDL_SetWindowData(window, "screenLayer", sdlView.layer);
     }
     cocoaWindow.backgroundColor = [NSColor clearColor];
     cocoaWindow.hasShadow = NO;
@@ -132,6 +133,20 @@ void update_window_mask_rects(SDL_Window * window, int h, const std::vector<SDL_
     maskLayer.path = path;
     maskLayer.affineTransform = CGAffineTransformScale(CGAffineTransformMakeTranslation(0, h), 1.0, -1.0);
     CGPathRelease(path);
+}
+
+void show_video_frame_with_mask(SDL_Window * window, SDL_Surface * surface)
+{
+    // this overrides the SDL view and sets the layer contents to a CGImage instead
+    // it seems to be the only way to have a mask not made out of rectangles
+    CALayer *screenLayer = (CALayer*)SDL_GetWindowData(window, "screenLayer");
+    if (screenLayer.contents) {
+        CGImageRelease((CGImageRef)screenLayer.contents);
+    }
+
+    CGBitmapInfo bitmapInfo = surface->format->Amask == 0xff000000 ? kCGImageAlphaPremultipliedLast : kCGImageAlphaPremultipliedFirst;
+    CGImageRef image = CGImageCreate(surface->w, surface->h, 8, surface->format->BitsPerPixel, surface->pitch, CGColorSpaceCreateDeviceRGB(), bitmapInfo, CGDataProviderCreateWithData(NULL, surface->pixels, surface->w * surface->h * 4, NULL), NULL, false, kCGRenderingIntentDefault);
+    screenLayer.contents = (id)image;
 }
 #endif
 

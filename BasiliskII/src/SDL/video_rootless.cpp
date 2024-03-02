@@ -481,13 +481,14 @@ bool update_display_mask(SDL_Window *window, int w, int h) {
 	return f;
 }
 
-void apply_display_mask(SDL_Surface * host_surface, SDL_Rect update_rect) {
+void apply_display_mask(SDL_Surface * host_surface, SDL_Rect update_rect, SDL_Window * window) {
+
     if (display_mask.pixels == NULL) {
         return;
     }
-    
-    if (host_surface->format->format != SDL_PIXELFORMAT_ARGB8888) {
-        printf("Invalid host surface\n");
+
+    if (host_surface->format->BytesPerPixel != 4) {
+        printf("Invalid host surface (not 4bpp)\n");
         return;
     }
     
@@ -502,6 +503,8 @@ void apply_display_mask(SDL_Surface * host_surface, SDL_Rect update_rect) {
         for (int x = update_rect.x; x < update_rect.x+update_rect.w; x++) {
             if (*mask == 0) {
                 *pixel = 0;
+            } else {
+                *pixel |= host_surface->format->Amask;
             }
             pixel++;
             mask++;
@@ -509,6 +512,9 @@ void apply_display_mask(SDL_Surface * host_surface, SDL_Rect update_rect) {
         srcPixels += host_surface->pitch / 4;
         srcMask += display_mask.w;
     }
+
+    extern void show_video_frame_with_mask(SDL_Window *, SDL_Surface *);
+    show_video_frame_with_mask(window, host_surface);
 }
 
 void check_drag_region(M68kRegisters *r, uint16 opcode) {
