@@ -1072,11 +1072,7 @@
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
-				"OTHER_LDFLAGS[arch=arm64]" = (
-					"-luae_cpu_arm64",
-					"-lgmp",
-					"-lmpfr",
-				);
+				"OTHER_LDFLAGS[arch=arm64]" = "-luae_cpu_arm64";
 				"OTHER_LDFLAGS[arch=x86_64]" = (
 					"-luae_cpu_x86_64",
 					"-Wl,-no_pie",
@@ -1160,11 +1156,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				OTHER_CFLAGS = "";
 				OTHER_LDFLAGS = "";
-				"OTHER_LDFLAGS[arch=arm64]" = (
-					"-luae_cpu_arm64",
-					"-lgmp",
-					"-lmpfr",
-				);
+				"OTHER_LDFLAGS[arch=arm64]" = "-luae_cpu_arm64";
 				"OTHER_LDFLAGS[arch=x86_64]" = (
 					"-luae_cpu_x86_64",
 					"-Wl,-no_pie",

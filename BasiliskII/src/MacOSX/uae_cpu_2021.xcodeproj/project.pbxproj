@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		283420462B93C31B00D7DB68 /* libmpfr.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 283420452B93C31B00D7DB68 /* libmpfr.a */; };
+		283420482B93C36F00D7DB68 /* libgmp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 283420472B93C36F00D7DB68 /* libgmp.a */; };
 		E41D7AAA2642C070005E8093 /* basilisk_glue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E41D7AA82642C070005E8093 /* basilisk_glue.cpp */; };
 		E41D7AAE2642C07C005E8093 /* cpu_emulation.h in Headers */ = {isa = PBXBuildFile; fileRef = E41D7AAC2642C07C005E8093 /* cpu_emulation.h */; };
 		E41D7AAF2642C07C005E8093 /* cpummu.h in Headers */ = {isa = PBXBuildFile; fileRef = E41D7AAD2642C07C005E8093 /* cpummu.h */; };
@@ -39,6 +41,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		283420452B93C31B00D7DB68 /* libmpfr.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libmpfr.a; path = /opt/homebrew/lib/libmpfr.a; sourceTree = "<absolute>"; };
+		283420472B93C36F00D7DB68 /* libgmp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libgmp.a; path = /opt/homebrew/lib/libgmp.a; sourceTree = "<absolute>"; };
 		E41D7AA12642C004005E8093 /* libuae_cpu_arm64.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libuae_cpu_arm64.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		E41D7AA82642C070005E8093 /* basilisk_glue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = basilisk_glue.cpp; path = ../uae_cpu_2021/basilisk_glue.cpp; sourceTree = "<group>"; };
 		E41D7AAC2642C07C005E8093 /* cpu_emulation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = cpu_emulation.h; path = ../uae_cpu_2021/cpu_emulation.h; sourceTree = "<group>"; };
@@ -77,6 +81,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				283420482B93C36F00D7DB68 /* libgmp.a in Frameworks */,
+				283420462B93C31B00D7DB68 /* libmpfr.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -86,6 +92,8 @@
 		E41D7A982642C004005E8093 = {
 			isa = PBXGroup;
 			children = (
+				283420452B93C31B00D7DB68 /* libmpfr.a */,
+				283420472B93C36F00D7DB68 /* libgmp.a */,
 				E41D7AA82642C070005E8093 /* basilisk_glue.cpp */,
 				E41D7AC32642C08E005E8093 /* fpu */,
 				E41D7AAC2642C07C005E8093 /* cpu_emulation.h */,
@@ -377,6 +385,10 @@
 					../Unix,
 					/opt/homebrew/include,
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					/opt/homebrew/lib,
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				VALID_ARCHS = arm64;
 			};
@@ -396,6 +408,10 @@
 					../uae_cpu_2021,
 					../Unix,
 					/opt/homebrew/include,
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					/opt/homebrew/lib,
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				VALID_ARCHS = arm64;
