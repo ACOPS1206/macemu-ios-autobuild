@@ -375,6 +375,7 @@
 					../MacOSX,
 					../uae_cpu_2021,
 					../Unix,
+					/opt/homebrew/include,
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				VALID_ARCHS = arm64;
@@ -394,6 +395,7 @@
 					../MacOSX,
 					../uae_cpu_2021,
 					../Unix,
+					/opt/homebrew/include,
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				VALID_ARCHS = arm64;
