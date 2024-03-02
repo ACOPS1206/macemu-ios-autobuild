@@ -92,6 +92,7 @@
 #include <sys/stat.h>
 #include <sys/param.h>
 #include <signal.h>
+#include <string>
 
 #include "sysdeps.h"
 #include "main.h"
@@ -124,7 +125,6 @@
 
 #ifdef USE_SDL
 #include <SDL.h>
-#include <string>
 #endif
 
 #ifndef USE_SDL_VIDEO
@@ -170,7 +170,7 @@ const char ROM_FILE_NAME2[] = "Mac OS ROM";
 // FIXME: needs to be >= 0x04000000
 const uintptr RAM_BASE = 0x10000000;		// Base address of RAM
 #endif
-const uintptr ROM_BASE = 0x40800000;		// Base address of ROM
+const uintptr ROM_BASE = 0x50000000;		// Base address of ROM
 #if REAL_ADDRESSING
 const uint32 ROM_ALIGNMENT = 0x100000;		// ROM must be aligned to a 1MB boundary
 #endif
@@ -254,8 +254,10 @@ uintptr SheepMem::data;						// Top of SheepShaver data (stack like storage)
 
 
 // Prototypes
+#if !defined(__APPLE__) || !defined(__x86_64__)
 static bool kernel_data_init(void);
 static bool shm_map_address(int kernel_area, uint32 addr);
+#endif
 static void Quit(void);
 static void *emul_func(void *arg);
 static void *nvram_func(void *arg);
@@ -373,6 +375,7 @@ static void usage(const char *prg_name)
 	printf("\nUnix options:\n");
 	printf("  --display STRING\n    X display to use\n");
 	PrefsPrintUsage();
+	printf("\nBuild Date: %s\n", __DATE__);
 	exit(0);
 }
 
@@ -694,6 +697,12 @@ static bool init_sdl()
 	assert(sdl_flags != 0);
 
 #ifdef USE_SDL_VIDEO
+#if REAL_ADDRESSING && !defined(__MACOSX__)
+	// Needed to fix a crash when using Wayland
+	// Forces use of XWayland instead
+	setenv("SDL_VIDEODRIVER", "x11", true);
+#endif
+
 	// Don't let SDL block the screensaver
 	setenv("SDL_VIDEO_ALLOW_SCREENSAVER", "1", true);
 
@@ -709,15 +718,22 @@ static bool init_sdl()
 	}
 	atexit(SDL_Quit);
 
-#if SDL_VERSION_ATLEAST(2,0,0)
+#if SDL_VERSION_ATLEAST(2, 0, 0)
 	const int SDL_EVENT_TIMEOUT = 100;
 	for (int i = 0; i < SDL_EVENT_TIMEOUT; i++) {
 		SDL_Event event;
 		SDL_PollEvent(&event);
+#if SDL_VERSION_ATLEAST(3, 0, 0)
+		if (event.type == SDL_EVENT_DROP_FILE) {
+			sdl_vmdir = event.drop.data;
+			break;
+		}
+#else
 		if (event.type == SDL_DROPFILE) {
 			sdl_vmdir = event.drop.file;
 			break;
 		}
+#endif
 		SDL_Delay(1);
 	}
 #endif
@@ -796,6 +812,13 @@ int main(int argc, char **argv)
 				gui_connection_path = argv[i];
 				argv[i] = NULL;
 			}
+		} else if (strcmp(argv[i], "--config") == 0) {
+			argv[i++] = NULL;
+			if (i < argc) {
+				extern std::string UserPrefsPath;
+				UserPrefsPath = argv[i];
+				argv[i] = NULL;
+			}
 		} else if (valid_vmdir(argv[i])) {
 			vmdir = argv[i];
 			argv[i] = NULL;
@@ -841,7 +864,8 @@ int main(int argc, char **argv)
 	// Read preferences
 	PrefsInit(vmdir, argc, argv);
 
-#if __MACOSX__ && SDL_VERSION_ATLEAST(2,0,0)
+#ifdef __MACOSX__
+#if SDL_VERSION_ATLEAST(2,0,0)
 	// On Mac OS X hosts, SDL2 will create its own menu bar.  This is mostly OK,
 	// except that it will also install keyboard shortcuts, such as Command + Q,
 	// which can interfere with keyboard shortcuts in the guest OS.
@@ -850,6 +874,7 @@ int main(int argc, char **argv)
 	// menu bar in-place.
 	extern void disable_SDL2_macosx_menu_bar_keyboard_shortcuts();
 	disable_SDL2_macosx_menu_bar_keyboard_shortcuts();
+#endif
 #endif
 	
 	// Any command line arguments left?
@@ -1217,7 +1242,7 @@ static void Quit(void)
 	exit(0);
 }
 
-
+#if !defined(__APPLE__) || !defined(__x86_64__)
 /*
  *  Initialize Kernel Data segments
  */
@@ -1248,7 +1273,6 @@ static bool kernel_data_init(void)
 	return false;
 }
 
-
 /*
  *  Maps the memory identified by kernel_area at the specified addr
  */
@@ -1258,6 +1282,7 @@ static bool shm_map_address(int kernel_area, uint32 addr)
 	void *kernel_addr = Mac2HostAddr(addr);
 	return shmat(kernel_area, kernel_addr, 0) == kernel_addr;
 }
+#endif  // !defined(__APPLE__) || !defined(__x86_64__)
 
 
 /*
@@ -1413,12 +1438,13 @@ static void *nvram_func(void *arg)
  *  60Hz thread (really 60.15Hz)
  */
 
+bool tick_inhibit;
 static void *tick_func(void *arg)
 {
 	int tick_counter = 0;
 	uint64 start = GetTicks_usec();
 	int64 ticks = 0;
-	uint64 next = GetTicks_usec();
+	uint64 next = start;
 
 	while (!tick_thread_cancel) {
 
@@ -1429,6 +1455,7 @@ static void *tick_func(void *arg)
 			Delay_usec(delay);
 		else if (delay < -16625)
 			next = GetTicks_usec();
+		if (tick_inhibit) continue;
 		ticks++;
 
 #if !EMULATED_PPC
@@ -1488,7 +1515,7 @@ static void *tick_func(void *arg)
 		}
 	}
 
-	uint64 end = GetTicks_usec();
+	D(uint64 end = GetTicks_usec());
 	D(bug("%lld ticks in %lld usec = %f ticks/sec\n", ticks, end - start, ticks * 1000000.0 / (end - start)));
 	return NULL;
 }
@@ -2209,8 +2236,6 @@ power_inst:		sprintf(str, GetString(STR_POWER_INSTRUCTION_ERR), r->pc(), r->gpr(
 rti:;
 }
 #endif
-
-extern int vm_init_reserved(void *hostAddress);
 
 /*
  *  Helpers to share 32-bit addressable data with MacOS

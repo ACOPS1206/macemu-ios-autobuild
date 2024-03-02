@@ -11,9 +11,6 @@ dnl Aliases for PACKAGE and VERSION macros.
 AC_DEFINE_UNQUOTED(PACKAGE, "$PACKAGE_NAME", [Define this program name.])
 AC_DEFINE_UNQUOTED(VERSION, "$PACKAGE_VERSION", [Define this program version.])
 
-dnl SDL options.
-#AC_ARG_ENABLE(sdl-static,    [  --enable-sdl-static     use SDL static libraries for linking [default=no]], [WANT_SDL_STATIC=$enableval], [WANT_SDL_STATIC=no])
-
 dnl JIT compiler options.
 AC_ARG_ENABLE(jit-compiler,  [  --enable-jit-compiler   enable JIT compiler [default=yes]], [WANT_JIT=$enableval], [WANT_JIT=yes])
 AC_ARG_ENABLE(jit-debug,     [  --enable-jit-debug      activate native code disassemblers [default=no]], [WANT_JIT_DEBUG=$enableval], [WANT_JIT_DEBUG=no])
@@ -35,6 +32,7 @@ AC_ARG_ENABLE(fpe,
 
 dnl External packages.
 AC_ARG_WITH(gtk,             [  --with-gtk              use GTK user interface [default=yes]], [WANT_GTK=$withval], [WANT_GTK=yes])
+AC_ARG_ENABLE(vosf,         [  --enable-vosf           enable video on SEGV signals [default=no]], [WANT_VOSF=$enableval], [WANT_VOSF=no])
 
 AC_ARG_WITH(bincue,   
   AS_HELP_STRING([--with-bincue], [Allow cdrom image files in bin/cue mode]))
@@ -51,6 +49,8 @@ AC_ARG_ENABLE(addressing,
 ],
 [ ADDRESSING_TEST_ORDER="direct banks"
 ])
+
+AC_ARG_WITH(sdl3,            [  --with-sdl3             use SDL 3.x, rather than SDL 2.x [default=no]], [WANT_SDL_VERSION_MAJOR=3], [WANT_SDL_VERSION_MAJOR=2])
 
 dnl Canonical system information.
 AC_CANONICAL_HOST
@@ -211,8 +211,12 @@ AC_CACHE_CHECK([whether we can skip instruction in SIGSEGV handler],
 AC_TRANSLATE_DEFINE(HAVE_SIGSEGV_SKIP_INSTRUCTION, "$ac_cv_have_skip_instruction",
   [Define if we can ignore the fault (instruction skipping in SIGSEGV handler).])
 
-dnl We really want VOSF (Video on SEGV Signals) screen updates acceleration
-AC_DEFINE(ENABLE_VOSF, 1, [Define if using video enabled on SEGV signals.])
+dnl Enable VOSF screen updates with this feature is requested
+if [[ "x$WANT_VOSF" = "xyes" ]]; then
+    AC_DEFINE(ENABLE_VOSF, 1, [Define if using video enabled on SEGV signals.])
+else
+    WANT_VOSF=no
+fi
 
 dnl Determine the addressing mode to use
 ADDRESSING_MODE=""
@@ -543,20 +547,15 @@ CPUINCLUDES="-I../uae_cpu"
 CPUSRCS="../uae_cpu/basilisk_glue.cpp ../uae_cpu/memory.cpp ../uae_cpu/newcpu.cpp ../uae_cpu/readcpu.cpp $FPUSRCS cpustbl.cpp cpudefs.cpp $CPUSRCS $JITSRCS"
 
 dnl We really want SDL for now
-AC_CHECK_TOOL(sdl_config, sdl2-config, no)
-AS_IF([test "x$sdl_config" = xno], [AC_MSG_ERROR([Sorry, you currently need SDL for this port])])
-SDL_CFLAGS=`$sdl_config --cflags`
+if [[ "x$WANT_SDL_VERSION_MAJOR" = "x3" ]]; then
+  SDL_CFLAGS=`pkg-config sdl3 --cflags`
+  SDL_CFLAGS+=`echo " $SDL_CFLAGS" | sed -e 's/\(-I.*include\)/\1\/SDL3/'`
+  SDL_LIBS=`pkg-config sdl3 --libs | sed -e 's/-lSDL3/-lSDL3.dll/'`
+else
+  SDL_CFLAGS=`sdl2-config --cflags`
+  SDL_LIBS=`sdl2-config --static-libs`
+fi
 AC_SUBST(SDL_CFLAGS)
-#if [[ "x$WANT_SDL_STATIC" = "xyes" ]]; then
-  SDL_LIBS=`$sdl_config --static-libs`
-#  sdl_prefix=`$sdl_config --exec-prefix`
-#  if [[ -n "$sdl_prefix" ]]; then
-#    SDL_LIBS=`echo "$SDL_LIBS" | sed -e "s,-l\(SDLmain\|SDL\),$sdl_prefix/lib/lib\1.a,g"`
-#  fi
-#  SDL_LIBS="$SDL_LIBS -lwinmm"
-#else
-#  SDL_LIBS=`$sdl_config --libs`
-#fi
 AC_SUBST(SDL_LIBS)
 AC_DEFINE(USE_SDL, 1, [Define to enble SDL support])
 AC_DEFINE(USE_SDL_VIDEO, 1, [Define to enable SDL video graphics support])
@@ -580,6 +579,7 @@ dnl Print summary.
 echo
 echo Basilisk II configuration summary:
 echo
+echo SDL major-version ...................... : $WANT_SDL_VERSION_MAJOR
 echo Use JIT compiler ....................... : $WANT_JIT
 echo JIT debug mode ......................... : $WANT_JIT_DEBUG
 echo Floating-Point emulation core .......... : $FPE_CORE
@@ -587,5 +587,6 @@ echo Assembly optimizations ................. : $ASM_OPTIMIZATIONS
 echo Addressing mode ........................ : $ADDRESSING_MODE
 echo BINCUE support ......................... : $have_bincue
 echo GTK user interface ..................... : $WANT_GTK
+echo Enable VOSF ............................ : $WANT_VOSF
 echo
 echo "Configuration done. Now type \"make\" (or \"gmake\")."

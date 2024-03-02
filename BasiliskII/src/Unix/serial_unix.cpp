@@ -21,12 +21,18 @@
 #include "sysdeps.h"
 
 #include <sys/ioctl.h>
+
+#ifdef HAVE_SYS_FILIO_H
+#include <sys/filio.h>
+#endif
+
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <termios.h>
 #include <errno.h>
+
 #ifdef __linux__
 #include <linux/lp.h>
 #include <linux/major.h>
@@ -648,16 +654,16 @@ bool XSERDPort::configure(uint16 config)
 	// Set number of data bits
 	switch (config & 0x0c00) {
 		case data5:
-			mode.c_cflag = mode.c_cflag & ~CSIZE | CS5;
+			mode.c_cflag = (mode.c_cflag & ~CSIZE) | CS5;
 			break;
 		case data6:
-			mode.c_cflag = mode.c_cflag & ~CSIZE | CS6;
+			mode.c_cflag = (mode.c_cflag & ~CSIZE) | CS6;
 			break;
 		case data7:
-			mode.c_cflag = mode.c_cflag & ~CSIZE | CS7;
+			mode.c_cflag = (mode.c_cflag & ~CSIZE) | CS7;
 			break;
 		case data8:
-			mode.c_cflag = mode.c_cflag & ~CSIZE | CS8;
+			mode.c_cflag = (mode.c_cflag & ~CSIZE) | CS8;
 			break;
 	}
 

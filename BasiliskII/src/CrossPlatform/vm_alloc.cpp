@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <assert.h>
 #include "vm_alloc.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
@@ -71,7 +72,7 @@ typedef unsigned long vm_uintptr_t;
 #ifndef MAP_32BIT
 #define MAP_32BIT 0
 #endif
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(__NetBSD__)
 #define FORCE_MAP_32BIT MAP_FIXED
 #else
 #define FORCE_MAP_32BIT MAP_32BIT
@@ -86,7 +87,7 @@ typedef unsigned long vm_uintptr_t;
 #define MAP_EXTRA_FLAGS (MAP_32BIT)
 
 #ifdef HAVE_MMAP_VM
-#if (defined(__linux__) && defined(__i386__)) || defined(__FreeBSD__) || HAVE_LINKER_SCRIPT
+#if (defined(__linux__) && defined(__i386__)) || defined(__sun__) || defined(__FreeBSD__) || defined(__NetBSD__) || HAVE_LINKER_SCRIPT
 /* Force a reasonnable address below 0x80000000 on x86 so that we
    don't get addresses above when the program is run on AMD64.
    NOTE: this is empirically determined on Linux/x86.  */
@@ -223,10 +224,11 @@ void vm_exit(void)
 }
 
 static void *reserved_buf;
-static const size_t RESERVED_SIZE = 64 * 1024 * 1024; // for 5K Retina
+static const size_t RESERVED_SIZE = 80 * 1024 * 1024; // for 6K Retina
 
 void *vm_acquire_reserved(size_t size) {
-	return reserved_buf && size <= RESERVED_SIZE ? reserved_buf : VM_MAP_FAILED;
+	assert(reserved_buf && size <= RESERVED_SIZE);
+	return reserved_buf;
 }
 
 int vm_init_reserved(void *hostAddress) {
@@ -267,9 +269,15 @@ void * vm_acquire(size_t size, int options)
 #elif defined(HAVE_MMAP_VM)
 	int fd = zero_fd;
 	int the_map_flags = translate_map_flags(options) | map_flags;
-
+#ifdef __aarch64__
+	if ((addr = mmap((caddr_t)next_address, reserved_buf ? size : size + RESERVED_SIZE, VM_PAGE_DEFAULT, the_map_flags, fd, 0)) == (void *)MAP_FAILED)
+		return VM_MAP_FAILED;
+	if (!reserved_buf)
+		reserved_buf = (char *)addr + size;
+#else
 	if ((addr = mmap((caddr_t)next_address, size, VM_PAGE_DEFAULT, the_map_flags, fd, 0)) == (void *)MAP_FAILED)
 		return VM_MAP_FAILED;
+#endif
 #if USE_JIT
 	// Sanity checks for 64-bit platforms
 	if (sizeof(void *) == 8 && (options & VM_MAP_32BIT) && !((char *)addr <= (char *)0xffffffff))

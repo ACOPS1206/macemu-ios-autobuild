@@ -306,6 +306,7 @@ static void Blit_Copy_Raw(uint8 * dest, const uint8 * source, uint32 length)
 #define FB_DEPTH 24
 #include "video_blit.h"
 
+#if !(REAL_ADDRESSING || DIRECT_ADDRESSING || USE_SDL_VIDEO)
 /* -------------------------------------------------------------------------- */
 /* --- 1-bit indexed to 8-bit color mode conversion                       --- */
 /* -------------------------------------------------------------------------- */
@@ -326,6 +327,7 @@ static void Blit_Expand_1_To_8_Color(uint8 * dest, const uint8 * p, uint32 lengt
 		*q++ = CONVERT_BW(c & 1);
 	}
 }
+#endif
 
 /* -------------------------------------------------------------------------- */
 /* --- 1/2/4-bit indexed to 8-bit mode conversion                         --- */
@@ -508,7 +510,11 @@ static Screen_blit_func_info Screen_blitters[] = {
 	{ 16, 0x00f800, 0x0007e0, 0x00001f, Blit_RGB565_NBO	, Blit_RGB565_OBO	},	// OK (NBO)
 	{ 24, 0xff0000, 0x00ff00, 0x0000ff, Blit_RGB888_NBO	, Blit_Copy_Raw		},	// OK (NBO)
 	{ 24, 0x0000ff, 0x00ff00, 0xff0000, Blit_BGR888_NBO	, Blit_BGR888_OBO	},	// NT
+#ifdef ENABLE_VOSF
 	{ 32, 0xff0000, 0x00ff00, 0x0000ff, Blit_RGB888_NBO	, Blit_Copy_Raw		},	// OK (NBO)
+#else
+	{ 32, 0xff000000, 0x00ff0000, 0x0000ff00, Blit_RGB888_NBO	, Blit_Copy_Raw		},	// OK (NBO)
+#endif
 	{ 32, 0x0000ff, 0x00ff00, 0xff0000, Blit_BGR888_NBO	, Blit_BGR888_OBO	},	// NT
 #endif
 	{ 32, 0xff00, 0xff0000, 0xff000000, Blit_Copy_Raw   , Blit_Copy_Raw     }   // OK

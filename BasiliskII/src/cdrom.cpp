@@ -32,6 +32,7 @@
 
 #include <string.h>
 #include <vector>
+#include <map>
 
 #ifndef NO_STD_NAMESPACE
 using std::vector;
@@ -124,8 +125,8 @@ static const uint8 bcd2bin[256] = {
 
 // Struct for each drive
 struct cdrom_drive_info {
-	cdrom_drive_info() : num(0), fh(NULL), start_byte(0), status(0) {}
-	cdrom_drive_info(void *fh_) : num(0), fh(fh_), start_byte(0), status(0) {}
+	cdrom_drive_info() : num(0), fh(NULL), start_byte(0), status(0), drop(false) {}
+	cdrom_drive_info(void *fh_) : num(0), fh(fh_), start_byte(0), status(0), drop(false) {}
 	
 	void close_fh(void) { SysAllowRemoval(fh); Sys_close(fh); }
 	
@@ -147,6 +148,7 @@ struct cdrom_drive_info {
 	bool repeat;		// Repeat flag
 	uint8 power_mode;	// Power mode
 	uint32 status;		// Mac address of drive status record
+	bool drop;
 };
 
 // List of drives handled by this driver
@@ -161,6 +163,7 @@ uint32 CDROMIconAddr;
 // Flag: Control(accRun) has been called, interrupt routine is now active
 static bool acc_run_called = false;
 
+static std::map<int, void *> remount_map;
 
 /*
  *  Get pointer to drive info or drives.end() if not found
@@ -203,8 +206,10 @@ static void find_hfs_partition(cdrom_drive_info &info)
 		// Partition map block found, Apple HFS partition?
 		if (strcmp((char *)(map + 48), "Apple_HFS") == 0) {
 			info.start_byte = (loff_t)((map[8] << 24) | (map[9] << 16) | (map[10] << 8) | map[11]) << 9;
+#if DEBUG
 			uint32 num_blocks = (map[12] << 24) | (map[13] << 16) | (map[14] << 8) | map[15];
 			D(bug(" HFS partition found at %d, %d blocks\n", info.start_byte, num_blocks));
+#endif
 			break;
 		}
 	}
@@ -299,16 +304,13 @@ static bool position2msf(const cdrom_drive_info &info, uint16 postype, uint32 po
 
 void CDROMInit(void)
 {
-	// No drives specified in prefs? Then add defaults
-	if (PrefsFindString("cdrom", 0) == NULL) {
-		SysAddCDROMPrefs();
-	}
+	SysAddCDROMPrefs();
 	
 	// Add drives specified in preferences
 	int index = 0;
 	const char *str;
 	while ((str = PrefsFindString("cdrom", index++)) != NULL) {
-		void *fh = Sys_open(str, true);
+		void *fh = Sys_open(str, true, true);
 		if (fh)
 			drives.push_back(cdrom_drive_info(fh));
 	}
@@ -321,6 +323,16 @@ void CDROMInit(void)
 	}
 }
 
+void CDROMDrop(const char *path) {
+	if (!drives.empty()) {
+		cdrom_drive_info &info = drives.back();
+		if (!info.drop) {
+			info.fh = Sys_open(path, true, true);
+			if (info.fh)
+				info.drop = true;
+		}
+	}
+}
 
 /*
  *  Deinitialization
@@ -356,6 +368,17 @@ bool CDROMMountVolume(void *fh)
 		return true;
 	} else
 		return false;
+}
+
+void CDROMRemount() {
+	for (std::map<int, void *>::iterator i = remount_map.begin(); i != remount_map.end(); ++i)
+		for (drive_vec::iterator info = drives.begin(); info != drives.end(); ++info)
+			if (info->num == i->first) {
+				last_drive_num = i->first;
+				info->fh = i->second;
+				break;
+			}
+	remount_map.clear();
 }
 
 
@@ -558,10 +581,16 @@ int16 CDROMControl(uint32 pb, uint32 dce)
 			
 		case 7:			// EjectTheDisc
 			if (ReadMacInt8(info->status + dsDiskInPlace) > 0) {
-				SysAllowRemoval(info->fh);
-				SysEject(info->fh);
+				if (info->drop) {
+					SysAllowRemoval(info->fh);
+					SysEject(info->fh);
+					info->twok_offset = -1;
+					info->close_fh();
+					info->drop = false;
+				}
+				else remount_map.insert(std::make_pair(ReadMacInt16(pb + ioVRefNum), info->fh));
+				info->fh = NULL;
 				WriteMacInt8(info->status + dsDiskInPlace, 0);
-				info->twok_offset = -1;
 				return noErr;
 			} else {
 				return offLinErr;

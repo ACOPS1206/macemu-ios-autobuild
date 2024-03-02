@@ -29,6 +29,9 @@
 #ifdef USE_SDL
 # include <SDL.h>
 # include <SDL_main.h>
+#if !SDL_VERSION_ATLEAST(3, 0, 0)
+#define __MACOS__	__MACOSX__
+#endif
 #endif
 
 #ifndef USE_SDL_VIDEO
@@ -41,6 +44,10 @@
 
 #if REAL_ADDRESSING || DIRECT_ADDRESSING
 # include <sys/mman.h>
+#endif
+
+#if __MACOS__
+# include "utils_macosx.h"
 #endif
 
 #if !EMULATED_68K && defined(__NetBSD__)
@@ -60,9 +67,6 @@ struct sigstate {
 #ifdef ENABLE_GTK
 # include <gtk/gtk.h>
 # include <gdk/gdk.h>
-# ifdef HAVE_GNOMEUI
-#  include <gnome.h>
-# endif
 # if !defined(GDK_WINDOWING_QUARTZ) && !defined(GDK_WINDOWING_WAYLAND)
 #  include <X11/Xlib.h>
 # endif
@@ -247,11 +251,12 @@ void *vm_acquire_mac(size_t size)
 	return vm_acquire(size, VM_MAP_DEFAULT | VM_MAP_32BIT);
 }
 
+#if REAL_ADDRESSING
 static int vm_acquire_mac_fixed(void *addr, size_t size)
 {
 	return vm_acquire_fixed(addr, size, VM_MAP_DEFAULT | VM_MAP_32BIT);
 }
-
+#endif
 
 /*
  *  SIGSEGV handler
@@ -374,6 +379,16 @@ void cpu_do_check_ticks(void)
 	if (emulated_ticks <= 0)
 		emulated_ticks += emulated_ticks_quantum;
 }
+#else
+uint16 emulated_ticks;
+void cpu_do_check_ticks(void)
+{
+	static int delay = -1;
+	if (delay < 0)
+		delay = PrefsFindInt32("delay");
+	if (delay)
+		usleep(delay);
+}
 #endif
 
 
@@ -395,6 +410,7 @@ static void usage(const char *prg_name)
 	);
 	LoadPrefs(NULL); // read the prefs file so PrefsPrintUsage() will print the correct default values
 	PrefsPrintUsage();
+	printf("\nBuild Date: %s\n", __DATE__);
 	exit(0);
 }
 
@@ -504,16 +520,9 @@ int main(int argc, char **argv)
 
 #ifdef ENABLE_GTK
 	if (!gui_connection) {
-#ifdef HAVE_GNOMEUI
-		// Init GNOME/GTK
-		char version[16];
-		sprintf(version, "%d.%d", VERSION_MAJOR, VERSION_MINOR);
-		gnome_init("Basilisk II", version, argc, argv);
-#else
 		// Init GTK
 		gtk_set_locale();
 		gtk_init(&argc, &argv);
-#endif
 	}
 #endif
 
@@ -562,14 +571,13 @@ int main(int argc, char **argv)
 	}
 	atexit(SDL_Quit);
 
-#if __MACOSX__ && SDL_VERSION_ATLEAST(2,0,0)
+#if __MACOS__ && SDL_VERSION_ATLEAST(2,0,0)
 	// On Mac OS X hosts, SDL2 will create its own menu bar.  This is mostly OK,
 	// except that it will also install keyboard shortcuts, such as Command + Q,
 	// which can interfere with keyboard shortcuts in the guest OS.
 	//
 	// HACK: disable these shortcuts, while leaving all other pieces of SDL2's
 	// menu bar in-place.
-	extern void disable_SDL2_macosx_menu_bar_keyboard_shortcuts();
 	disable_SDL2_macosx_menu_bar_keyboard_shortcuts();
 #endif
 	
@@ -687,7 +695,7 @@ int main(int argc, char **argv)
 	ROMBaseMac = Host2MacAddr(ROMBaseHost);
 #endif
 
-#if __MACOSX__
+#if __MACOS__
 	extern void set_current_directory();
 	set_current_directory();
 #endif
@@ -1260,13 +1268,15 @@ static void one_tick(...)
 }
 
 #ifdef USE_PTHREADS_SERVICES
+bool tick_inhibit;
 static void *tick_func(void *arg)
 {
 	uint64 start = GetTicks_usec();
 	int64 ticks = 0;
-	uint64 next = GetTicks_usec();
+	uint64 next = start;
 	while (!tick_thread_cancel) {
-		one_tick();
+		if (!tick_inhibit)
+			one_tick();
 		next += 16625;
 		int64 delay = next - GetTicks_usec();
 		if (delay > 0)
@@ -1275,8 +1285,10 @@ static void *tick_func(void *arg)
 			next = GetTicks_usec();
 		ticks++;
 	}
+#if DEBUG
 	uint64 end = GetTicks_usec();
 	D(bug("%lld ticks in %lld usec = %f ticks/sec\n", ticks, end - start, ticks * 1000000.0 / (end - start)));
+#endif
 	return NULL;
 }
 #endif

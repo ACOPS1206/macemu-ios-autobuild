@@ -53,6 +53,10 @@
 #include "mon.h"
 #endif
 
+#if !SDL_VERSION_ATLEAST(3, 0, 0)
+#define SDL_EVENT_KEY_UP	SDL_KEYUP
+#define SDL_EVENT_KEY_DOWN	SDL_KEYDOWN
+#endif
 
 // Constants
 const char ROM_FILE_NAME[] = "ROM";
@@ -105,6 +109,8 @@ uintptr SheepMem::base = 0x60000000;		// Address of SheepShaver data
 uintptr SheepMem::proc;						// Bottom address of SheepShave procedures
 uintptr SheepMem::data;						// Top of SheepShaver data (stack like storage)
 
+static HHOOK keyboard_hook;					// Hook for intercepting windows key events
+
 
 // Prototypes
 static bool kernel_data_init(void);
@@ -118,6 +124,7 @@ extern void emul_ppc(uint32 start);
 extern void init_emul_ppc(void);
 extern void exit_emul_ppc(void);
 sigsegv_return_t sigsegv_handler(sigsegv_info_t *sip);
+static LRESULT CALLBACK low_level_keyboard_hook(int nCode, WPARAM wParam, LPARAM lParam);
 
 
 /*
@@ -155,6 +162,7 @@ static void usage(const char *prg_name)
 	printf("\nUnix options:\n");
 	printf("  --display STRING\n    X display to use\n");
 	PrefsPrintUsage();
+	printf("\nBuild Date: %s\n", __DATE__);
 	exit(0);
 }
 
@@ -175,18 +183,69 @@ int main(int argc, char **argv)
 	printf(GetString(STR_ABOUT_TEXT1), VERSION_MAJOR, VERSION_MINOR);
 	printf(" %s\n", GetString(STR_ABOUT_TEXT2));
 
-	// Read preferences
-	PrefsInit(NULL, argc, argv);
-
 	// Parse command line arguments
 	for (int i=1; i<argc; i++) {
 		if (strcmp(argv[i], "--help") == 0) {
 			usage(argv[0]);
+		} else if (strcmp(argv[i], "--config") == 0) {
+			argv[i++] = NULL;
+			if (i < argc) {
+				extern std::string UserPrefsPath; // from prefs_windows.cpp
+				UserPrefsPath = to_tstring(argv[i]);
+				argv[i] = NULL;
+			}
 		} else if (argv[i][0] == '-') {
 			fprintf(stderr, "Unrecognized option '%s'\n", argv[i]);
 			usage(argv[0]);
 		}
 	}
+
+	// Read preferences
+	PrefsInit(NULL, argc, argv);
+
+	// #chenchijung 2024/2/21: move vm_init(), memory allocation for Mac RAM and Mac ROM here to avoid "cannot map RAM: no Error" bug.
+	//   caused by MSI afterburner (RIVA Tuner statistic tuner Server?). It is a workaround since I don't know why. But it works in my test env.
+	//
+	// ------------ Start of workaround --------------
+	int sdl_flags = 0;
+	// Initialize VM system
+	vm_init();
+
+	// Create area for Mac RAM
+	RAMSize = PrefsFindInt32("ramsize");
+	if (RAMSize <= 1000) {
+		RAMSize *= 1024 * 1024;
+	}
+	if (RAMSize < 16 * 1024 * 1024) {
+		WarningAlert(GetString(STR_SMALL_RAM_WARN));
+		RAMSize = 16 * 1024 * 1024;
+	}
+	RAMBase = 0;
+	if (vm_mac_acquire(RAMBase, RAMSize) < 0) {
+		sprintf(str, GetString(STR_RAM_MMAP_ERR), strerror(errno));
+		ErrorAlert(str);
+		goto quit;
+	}
+	RAMBaseHost = Mac2HostAddr(RAMBase);
+	ram_area_mapped = true;
+	D(bug("RAM area at %p (%08x)\n", RAMBaseHost, RAMBase));
+
+	// Create area for Mac ROM
+	if (vm_mac_acquire(ROM_BASE, ROM_AREA_SIZE) < 0) {
+		sprintf(str, GetString(STR_ROM_MMAP_ERR), strerror(errno));
+		ErrorAlert(str);
+		goto quit;
+	}
+	ROMBase = ROM_BASE;
+	ROMBaseHost = Mac2HostAddr(ROMBase);
+	rom_area_mapped = true;
+	D(bug("ROM area at %p (%08x)\n", ROMBaseHost, ROMBase));
+
+	if (RAMBase > ROMBase) {
+		ErrorAlert(GetString(STR_RAM_HIGHER_THAN_ROM_ERR));
+		goto quit;
+	}
+	//#chenchijung ----------------- end of workaround --------------
 
 	// Check we are using a Windows NT kernel >= 4.0
 	OSVERSIONINFO osvi;
@@ -210,8 +269,14 @@ int main(int argc, char **argv)
 //	// Load win32 libraries
 //	KernelInit();
 
+	// Install keyboard hook to block Windows key if enabled in prefs
+	if (PrefsFindBool("reservewindowskey"))
+	{
+		keyboard_hook = SetWindowsHookEx(WH_KEYBOARD_LL, low_level_keyboard_hook, GetModuleHandle(NULL), 0);
+	}
+
 	// Initialize SDL system
-	int sdl_flags = 0;
+	sdl_flags = 0; // #chenchijungtw move variable definition forward to avoid complication error
 #ifdef USE_SDL_VIDEO
 	sdl_flags |= SDL_INIT_VIDEO;
 #endif
@@ -238,9 +303,6 @@ int main(int argc, char **argv)
 		ErrorAlert(str);
 		goto quit;
 	}
-
-	// Initialize VM system
-	vm_init();
 
 	// Get system info
 	PVR = 0x00040000;			// Default: 604
@@ -291,41 +353,6 @@ int main(int argc, char **argv)
 	if (!SheepMem::Init()) {
 		sprintf(str, GetString(STR_SHEEP_MEM_MMAP_ERR), strerror(errno));
 		ErrorAlert(str);
-		goto quit;
-	}
-
-	// Create area for Mac ROM
-	if (vm_mac_acquire(ROM_BASE, ROM_AREA_SIZE) < 0) {
-		sprintf(str, GetString(STR_ROM_MMAP_ERR), strerror(errno));
-		ErrorAlert(str);
-		goto quit;
-	}
-	ROMBase = ROM_BASE;
-	ROMBaseHost = Mac2HostAddr(ROMBase);
-	rom_area_mapped = true;
-	D(bug("ROM area at %p (%08x)\n", ROMBaseHost, ROMBase));
-
-	// Create area for Mac RAM
-	RAMSize = PrefsFindInt32("ramsize");
-	if (RAMSize <= 1000) {
-		RAMSize *= 1024 * 1024;
-	}
-	if (RAMSize < 16 * 1024 * 1024) {
-		WarningAlert(GetString(STR_SMALL_RAM_WARN));
-		RAMSize = 16 * 1024 * 1024;
-	}
-	RAMBase = 0;
-	if (vm_mac_acquire(RAMBase, RAMSize) < 0) {
-		sprintf(str, GetString(STR_RAM_MMAP_ERR), strerror(errno));
-		ErrorAlert(str);
-		goto quit;
-	}
-	RAMBaseHost = Mac2HostAddr(RAMBase);
-	ram_area_mapped = true;
-	D(bug("RAM area at %p (%08x)\n", RAMBaseHost, RAMBase));
-
-	if (RAMBase > ROMBase) {
-		ErrorAlert(GetString(STR_RAM_HIGHER_THAN_ROM_ERR));
 		goto quit;
 	}
 
@@ -617,6 +644,7 @@ static DWORD nvram_func(void *arg)
  *  60Hz thread (really 60.15Hz)
  */
 
+bool tick_inhibit;
 static DWORD tick_func(void *arg)
 {
 	int tick_counter = 0;
@@ -633,6 +661,7 @@ static DWORD tick_func(void *arg)
 			Delay_usec(delay);
 		else if (delay < -16625)
 			next = GetTicks_usec();
+		if (tick_inhibit) continue;
 		ticks++;
 
 		// Pseudo Mac 1Hz interrupt, update local time
@@ -772,22 +801,25 @@ void SheepMem::Exit(void)
  */
 
 #ifdef USE_SDL_VIDEO
+#if SDL_VERSION_ATLEAST(3, 0, 0)
+#include <SDL_video.h>
+#else
 #include <SDL_syswm.h>
+#endif
 extern SDL_Window *sdl_window;
 HWND GetMainWindowHandle(void)
 {
-	SDL_SysWMinfo wmInfo;
-	SDL_VERSION(&wmInfo.version);
 	if (!sdl_window) {
 		return NULL;
 	}
-	if (!SDL_GetWindowWMInfo(sdl_window, &wmInfo)) {
-		return NULL;
-	}
-	if (wmInfo.subsystem != SDL_SYSWM_WINDOWS) {
-		return NULL;
-	}
-	return wmInfo.info.win.window;
+#if SDL_VERSION_ATLEAST(3, 0, 0)
+	SDL_PropertiesID props = SDL_GetWindowProperties(sdl_window);
+	return (HWND)SDL_GetProperty(props, "SDL.window.cocoa.window", NULL);
+#else
+	SDL_SysWMinfo wmInfo;
+	SDL_VERSION(&wmInfo.version);
+	return SDL_GetWindowWMInfo(sdl_window, &wmInfo) ? wmInfo.info.win.window : NULL;
+#endif
 }
 #endif
 
@@ -838,4 +870,44 @@ bool ChoiceAlert(const char *text, const char *pos, const char *neg)
 {
 	printf(GetString(STR_SHELL_WARNING_PREFIX), text);
 	return false;	//!!
+}
+
+/*
+ *  Low level keyboard hook allowing us to intercept events involving the Windows key
+ */
+static LRESULT CALLBACK low_level_keyboard_hook(int nCode, WPARAM wParam, LPARAM lParam)
+{
+	// Not a relevant event, immediately pass it on
+	if (nCode != HC_ACTION)
+        return CallNextHookEx(keyboard_hook, nCode, wParam, lParam);
+
+	KBDLLHOOKSTRUCT *p = (KBDLLHOOKSTRUCT *)lParam;
+	switch (wParam) {
+		case WM_KEYDOWN:
+		case WM_KEYUP:
+			// Intercept left/right windows keys when we have keyboard focus so Windows doesn't handle them
+			if (p->vkCode == VK_LWIN || p->vkCode == VK_RWIN) {
+				bool intercept_event = false;
+#ifdef USE_SDL_VIDEO
+				if (sdl_window && (SDL_GetWindowFlags(sdl_window) & SDL_WINDOW_INPUT_FOCUS)) {
+					intercept_event = true;
+				}
+#endif
+
+				// If we've determined we should intercept the event, intercept it. But pass the event onto SDL so SheepShaver handles it.
+				if (intercept_event) {
+					SDL_Event e;
+					memset(&e, 0, sizeof(e));
+					e.type = (wParam == WM_KEYDOWN) ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+					e.key.keysym.sym = (p->vkCode == VK_LWIN) ? SDLK_LGUI : SDLK_RGUI;
+					e.key.keysym.scancode = (p->vkCode == VK_LWIN) ? SDL_SCANCODE_LGUI : SDL_SCANCODE_RGUI;
+					SDL_PushEvent(&e);
+					return 1;
+				}
+			}
+			break;
+	}
+
+	// If we fall here, we weren't supposed to intercept it.
+	return CallNextHookEx(keyboard_hook, nCode, wParam, lParam);
 }

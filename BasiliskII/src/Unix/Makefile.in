@@ -161,7 +161,9 @@ installdirs:
 
 uninstall:
 	rm -f $(DESTDIR)$(bindir)/$(APP)$(EXEEXT)
-	rm -f $(DESTDIR)$(bindir)/$(GUI_APP)$(EXEEXT)
+	if test -f "$(GUI_APP_EXE)"; then \
+	  rm -f $(DESTDIR)$(bindir)/$(GUI_APP_EXE); \
+	fi
 	rm -f $(DESTDIR)$(man1dir)/$(APP).1
 	rm -f $(DESTDIR)$(datadir)/$(APP)/keycodes
 	rm -f $(DESTDIR)$(datadir)/$(APP)/fbdevices
@@ -212,13 +214,16 @@ $(OBJ_DIR)/gencpu$(EXEEXT): $(OBJ_DIR)/gencpu.o $(OBJ_DIR)/readcpu.o $(OBJ_DIR)/
 $(OBJ_DIR)/gencomp$(EXEEXT): $(OBJ_DIR)/gencomp.o $(OBJ_DIR)/readcpu.o $(OBJ_DIR)/cpudefs.o
 	$(CXX) $(LDFLAGS) -o $(OBJ_DIR)/gencomp$(EXEEXT) $(OBJ_DIR)/gencomp.o $(OBJ_DIR)/readcpu.o $(OBJ_DIR)/cpudefs.o
 
-cpudefs.cpp: $(OBJ_DIR)/build68k$(EXEEXT) @top_srcdir@/../uae_cpu/table68k
-	$(OBJ_DIR)/build68k$(EXEEXT) <@top_srcdir@/../uae_cpu/table68k >cpudefs.cpp
+UAE_PATH = @UAE_PATH@
+
+cpudefs.cpp: $(OBJ_DIR)/build68k$(EXEEXT) @top_srcdir@/$(UAE_PATH)/table68k
+	$(OBJ_DIR)/build68k$(EXEEXT) <@top_srcdir@/$(UAE_PATH)/table68k >cpudefs.cpp
 cpustbl.cpp: cpuemu.cpp
 cpustbl_nf.cpp: cpustbl.cpp
 compstbl.cpp: compemu.cpp
 cputbl.h: cpuemu.cpp
 comptbl.h: compemu.cpp
+cpufunctbl.cpp: cputbl.h
 
 cpuemu.cpp: $(OBJ_DIR)/gencpu$(EXEEXT)
 	$(OBJ_DIR)/gencpu$(EXEEXT)

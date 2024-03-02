@@ -39,14 +39,12 @@ AC_ARG_ENABLE(standalone-gui,[  --enable-standalone-gui enable a standalone GUI 
 AC_ARG_WITH(esd,            [  --with-esd              support ESD for sound under Linux/FreeBSD [default=yes]], [WANT_ESD=$withval], [WANT_ESD=yes])
 AC_ARG_WITH(gtk,            [  --with-gtk              use GTK user interface [default=yes]],
   [case "$withval" in
-   gtk1)      WANT_GTK="gtk";;
-   gtk|gtk2)  WANT_GTK="$withval";;
-   yes)       WANT_GTK="gtk2 gtk";;
+   yes|gtk2)  WANT_GTK="gtk2";;
    *)         WANT_GTK="no";;
    esac],
-  [WANT_GTK="gtk2 gtk"])
+  [WANT_GTK="gtk2"])
 AC_ARG_WITH(mon,            [  --with-mon              use mon as debugger [default=yes]], [WANT_MON=$withval], [WANT_MON=no])
-AC_ARG_WITH(dgcc,           [  --with-dgcc=COMPILER    use C++ COMPILER to compile synthetic opcodes or 'precompiled'], [DYNGEN_CC=$withval])
+AC_ARG_WITH(dgcc,           [  --with-dgcc=COMPILER    use C++ COMPILER to compile synthetic opcodes or 'precompiled'], [DYNGEN_CC=$withval], [DYNGEN_CC=precompiled])
 
 AC_ARG_WITH(bincue,   
   AS_HELP_STRING([--with-bincue], [Allow cdrom image files in bin/cue mode]))
@@ -73,9 +71,10 @@ AC_ARG_ENABLE(sdl-audio,    [  --enable-sdl-audio      use SDL for audio [defaul
 AC_ARG_ENABLE(sdl-framework,    [  --enable-sdl-framework  use SDL framework [default=no]], [WANT_SDL_FRAMEWORK=$enableval], [WANT_SDL_FRAMEWORK=no])
 AC_ARG_ENABLE(sdl-framework-prefix,    [  --enable-sdl-framework-prefix=PFX    default=/Library/Frameworks], [SDL_FRAMEWORK="$enableval"], [SDL_FRAMEWORK=/Library/Frameworks])
 AC_ARG_WITH(sdl1,            [  --with-sdl1             use SDL 1.x, rather than SDL 2.x [default=no]], [WANT_SDL_VERSION_MAJOR=1], [])
+AC_ARG_WITH(sdl3,            [  --with-sdl3             use SDL 3.x, rather than SDL 2.x [default=no]], [WANT_SDL_VERSION_MAJOR=3], [])
 
 dnl Checks for programs.
-AC_PROG_CC
+AC_PROG_CC_C99
 AC_PROG_CPP
 AC_PROG_CXX
 AC_PROG_MAKE_SET
@@ -212,41 +211,43 @@ if [[ "x$WANT_SDL" = "xyes" ]]; then
     if [[ "x$TEMP_WANT_SDL_VERSION_MAJOR" = "x" ]]; then
       TEMP_WANT_SDL_VERSION_MAJOR=2
     fi
-    if [[ "x$TEMP_WANT_SDL_VERSION_MAJOR" = "x2" ]]; then
-      AC_PATH_PROG(sdl2_config, "sdl2-config")
-      if [[ -n "$sdl2_config" ]]; then
-        sdl2_cflags=`$sdl2_config --cflags`
-        if [[ "x$WANT_SDL_STATIC" = "xyes" ]]; then
-          sdl2_libs=`$sdl2_config --static-libs`
-        else
-          sdl2_libs=`$sdl2_config --libs`
-        fi
-        CFLAGS="$CFLAGS $sdl2_cflags"
-        CXXFLAGS="$CXXFLAGS $sdl2_cflags"
-        LIBS="$LIBS $sdl2_libs"
-        WANT_SDL_VERSION_MAJOR=2
-      else
+
+    dnl use PKG_PROG_PKG_CONFIG to declare PKG_CONFIG variables.  Otherwise,
+    dnl PKG_* macros may fail, without much explanation.  The lack of this
+    dnl was causing --with-sdl1 to fail, as SDL 1.x could not be detected,
+    dnl as the 2nd call to PKG_CHECK_MODULES would fail, as $PKG_CONFIG
+    dnl never got defined (bizarrely-enough).  -- dludwig@pobox.com
+    PKG_PROG_PKG_CONFIG
+
+    if [[ "x$TEMP_WANT_SDL_VERSION_MAJOR" = "x3" ]]; then
+      PKG_CHECK_MODULES([sdl3], [sdl3 >= 3.0], [
+        CXXFLAGS="$CXXFLAGS $sdl3_CFLAGS"
+        CXXFLAGS+=`echo " $sdl3_CFLAGS" | sed -e 's/\(-I.*include\)/\1\/SDL3/'`
+        LIBS="$LIBS $sdl3_LIBS"
+        WANT_SDL_VERSION_MAJOR=3
+      ], [
         TEMP_WANT_SDL_VERSION_MAJOR=1
-      fi
+      ])
+    fi
+    if [[ "x$TEMP_WANT_SDL_VERSION_MAJOR" = "x2" ]]; then
+      PKG_CHECK_MODULES([sdl2], [sdl2 >= 2.0], [
+        CXXFLAGS="$CXXFLAGS $sdl2_CFLAGS"
+        LIBS="$LIBS $sdl2_LIBS"
+        WANT_SDL_VERSION_MAJOR=2
+      ], [
+        TEMP_WANT_SDL_VERSION_MAJOR=1
+      ])
     fi
     if [[ "x$TEMP_WANT_SDL_VERSION_MAJOR" = "x1" ]]; then
-      AC_PATH_PROG(sdl_config, "sdl-config")
-      if [[ -n "$sdl_config" ]]; then
-        sdl_cflags=`$sdl_config --cflags`
-        if [[ "x$WANT_SDL_STATIC" = "xyes" ]]; then
-          sdl_libs=`$sdl_config --static-libs`
-        else
-          sdl_libs=`$sdl_config --libs`
-        fi
-        CFLAGS="$CFLAGS $sdl_cflags"
-        CXXFLAGS="$CXXFLAGS $sdl_cflags"
-        LIBS="$LIBS $sdl_libs"
+      PKG_CHECK_MODULES([sdl], [sdl >= 1.2], [
+        CFLAGS="$CFLAGS $sdl_CFLAGS"
+        CXXFLAGS="$CXXFLAGS $sdl_CFLAGS"
+        LIBS="$LIBS $sdl_LIBS"
         WANT_SDL_VERSION_MAJOR=1
-      else
+      ], [
         WANT_SDL=no
-        WANT_SDL_VIDEO=no
-        WANT_SDL_AUDIO=no
-      fi
+        WANT_SDL_VERSION_MAJOR=
+      ])
     fi
   fi
   SDL_SUPPORT=`echo "$SDL_SUPPORT" | sed -e "s/^ //"`
@@ -336,35 +337,14 @@ fi
 
 dnl We use GTK+ if possible.
 UISRCS=../dummy/prefs_editor_dummy.cpp
-case "x$WANT_GTK" in
-xgtk2*)
-  WANT_GTK=no
-  AM_PATH_GTK_2_0(1.3.15, [
+if [[ "x$WANT_GTK" = "xgtk2" ]]; then
+  AM_PATH_GTK_2_0(2.6.4, [
     GUI_CFLAGS="$GTK_CFLAGS"
     GUI_LIBS="$GTK_LIBS"
     WANT_GTK=gtk2
   ], [
-    case "x${WANT_GTK}x" in
-    *gtkx)
-      AC_MSG_WARN([Could not find GTK+ 2.0, trying with GTK+ 1.2.])
-      WANT_GTK=gtk
-      ;;
-    *)
-      AC_MSG_WARN([Could not find GTK+, disabling user interface.])
-      WANT_GTK=no
-     ;;
-    esac
-  ])
-  ;;
-esac
-if [[ "x$WANT_GTK" = "xgtk" ]]; then
-  WANT_GTK=no
-  AM_PATH_GTK(1.2.0, [
-    GUI_CFLAGS="$GTK_CFLAGS"
-    GUI_LIBS="$GTK_LIBS"
-    WANT_GTK=gtk
-  ], [
-    AC_MSG_WARN([Could not find GTK+, disabling user interface.])
+    AC_MSG_WARN([Could not find GTK+ 2, disabling user interface.])
+    WANT_GTK=no
   ])
 fi
 if [[ "x$WANT_GTK" != "xno" -a "x$WANT_STANDALONE_GUI" = "xno" ]]; then
@@ -525,6 +505,9 @@ mips-sony-bsd|mips-sony-newsos4)
 *-*-freebsd*)
 	no_dev_ptmx=1
 	;;
+*-*-netbsd*)
+	no_dev_ptmx=1
+	;;
 esac
 
 if test -z "$no_dev_ptmx" ; then
@@ -653,6 +636,12 @@ netbsd*)
     EXTRASYSSRCS="paranoia.cpp NetBSD/sheepthreads.c ppc_asm.S"
   fi
   ;;
+solaris*)
+dnl Needed for sys/socket.h
+  LDFLAGS="$LDFLAGS -lsocket -lnsl"
+dnl Needed for SDL2
+  CXXFLAGS="$CXXFLAGS -std=c++11"
+  ;;
 darwin*)
   ETHERSRC=ether_unix.cpp
   if [[ "x$EMULATED_PPC" = "xno" ]]; then
@@ -747,7 +736,7 @@ if [[ "x$WANT_SDL" = "xyes" ]]; then
 fi
 if [[ "x$WANT_SDL_VIDEO" = "xyes" ]]; then
   AC_DEFINE(USE_SDL_VIDEO, 1, [Define to enable SDL video graphics support.])
-  VIDEOSRCS="../SDL/video_sdl.cpp ../SDL/video_sdl2.cpp"
+  VIDEOSRCS="../SDL/video_sdl.cpp ../SDL/video_sdl2.cpp ../SDL/video_sdl3.cpp"
   KEYCODES="../SDL/keycodes"
   if [[ "x$ac_cv_framework_Carbon" = "xyes" ]]; then
     AC_MSG_CHECKING([whether __LP64__ is defined])
@@ -777,7 +766,7 @@ else
 fi
 if [[ "x$WANT_SDL_AUDIO" = "xyes" ]]; then
   AC_DEFINE(USE_SDL_AUDIO, 1, [Define to enable SDL audio support])
-  AUDIOSRC="../SDL/audio_sdl.cpp"
+  AUDIOSRC="../SDL/audio_sdl.cpp ../SDL/audio_sdl3.cpp"
 fi
 
 dnl BINCUE overrides
@@ -978,53 +967,18 @@ AC_TRANSLATE_DEFINE(HAVE_MMAP_VM, $have_mmap_vm,
 
 fi dnl HAVE_MMAP_VM
 
-dnl Check if we can disable position-independent code
-AC_CACHE_CHECK([how to disable position-independent code],
-  ac_cv_no_pie, [
-  ac_cv_no_pie='-Wl,-no_pie'
-  saved_LDFLAGS="$LDFLAGS"
-  LDFLAGS="$LDFLAGS $ac_cv_no_pie"
-  AC_TRY_LINK(,,,[ac_cv_no_pie="cannot"])
-  if [[ "$ac_cv_no_pie" = "cannot" ]]; then
-    LDFLAGS="$saved_LDFLAGS"
-  fi
-])
-
 dnl Check if we can modify the __PAGEZERO segment for use as Low Memory
 AC_CACHE_CHECK([whether __PAGEZERO can be Low Memory area 0x0000-0x3000],
   ac_cv_pagezero_hack, [
   ac_cv_pagezero_hack=no 
-  if AC_TRY_COMMAND([Darwin/testlmem.sh 0x3000]); then
+  case $target_os:$target_cpu in
+  darwin*:x86_64)
     ac_cv_pagezero_hack=yes
-    dnl might as well skip the test for mmap-able low memory
-    ac_cv_can_map_lm=no
-  fi
+    ;;
+  esac
 ])
 AC_TRANSLATE_DEFINE(PAGEZERO_HACK, "$ac_cv_pagezero_hack",
   [Define if the __PAGEZERO Mach-O Low Memory Globals hack works on this system.])
-
-dnl Check if we can mmap 0x3000 bytes from 0x0000
-AC_CACHE_CHECK([whether we can map Low Memory area 0x0000-0x3000],
-  ac_cv_can_map_lm, [
-  AC_LANG_SAVE
-  AC_LANG_CPLUSPLUS
-  AC_TRY_RUN([
-    #include "../CrossPlatform/vm_alloc.cpp"
-    int main(void) { /* returns 0 if we could map the lowmem globals */
-      volatile char * lm = 0;
-      if (vm_init() < 0) exit(1);
-      if (vm_acquire_fixed(0, 0x2000) < 0) exit(1);
-      lm[0] = 'z';
-      if (vm_release((char *)lm, 0x2000) < 0) exit(1);
-      vm_exit(); exit(0);
-    }
-  ], ac_cv_can_map_lm=yes, ac_cv_can_map_lm=no,
-  dnl When cross-compiling, do not assume anything.
-  ac_cv_can_map_lm="guessing no"
-  )
-  AC_LANG_RESTORE
-  ]
-)
 
 dnl Check signal handlers need to be reinstalled
 AC_CACHE_CHECK([whether signal handlers need to be reinstalled],
@@ -1206,6 +1160,11 @@ AC_CACHE_CHECK([whether we can skip instruction in SIGSEGV handler],
   AC_LANG_RESTORE
   ]
 )
+
+if [[ "$target_cpu" = "arm" -o "$target_cpu" = "aarch64" ]]; then
+  ac_cv_have_skip_instruction=yes
+fi
+
 AC_TRANSLATE_DEFINE(HAVE_SIGSEGV_SKIP_INSTRUCTION, "$ac_cv_have_skip_instruction",
   [Define if we can ignore the fault (instruction skipping in SIGSEGV handler).])
 
@@ -1303,6 +1262,13 @@ EOF
       [Define constant offset for Mac address translation])
   fi
 fi
+
+case "$host" in
+  arm-apple-*)
+    AC_DEFINE_UNQUOTED(NATMEM_OFFSET, 0x400000000000, [Define constant offset for Mac address translation])
+    ;;
+esac
+
 AC_MSG_RESULT($WANT_ADDRESSING_MODE)
 
 dnl Utility macro used by next two tests.
@@ -1693,7 +1659,7 @@ linux*:x86_64)  LINKER_SCRIPT_FLAGS="-Wl,-T,ldscripts/linux-x86_64.ld";;
 linux*:powerpc) LINKER_SCRIPT_FLAGS="-Wl,-T,ldscripts/linux-ppc.ld";;
 netbsd*:i?86)   LINKER_SCRIPT_FLAGS="-Wl,-T,ldscripts/linux-i386.ld";;
 freebsd*:i?86)  LINKER_SCRIPT_FLAGS="-Wl,-T,ldscripts/freebsd-i386.ld";;
-darwin*:*)      LINKER_SCRIPT_FLAGS="-Wl,-seg1addr,0x78048000";;
+#darwin*:*)      LINKER_SCRIPT_FLAGS="-Wl,-seg1addr,0x78048000";;
 esac
 if [[ -n "$LINKER_SCRIPT_FLAGS" ]]; then
   AC_CACHE_CHECK([whether linker script is usable],

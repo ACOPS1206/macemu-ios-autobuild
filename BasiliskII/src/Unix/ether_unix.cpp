@@ -39,6 +39,11 @@
 #ifdef HAVE_SYS_POLL_H
 #include <sys/poll.h>
 #endif
+
+#ifdef __sun__
+#define BSD_COMP 1
+#endif
+
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
@@ -66,7 +71,7 @@
 #include <map>
 #include <string>
 
-#if defined(__FreeBSD__) || defined(sgi) || (defined(__APPLE__) && defined(__MACH__))
+#if defined(__FreeBSD__) || defined (__sun__) || defined(sgi) || (defined(__APPLE__) && defined(__MACH__))
 #include <net/if.h>
 #endif
 

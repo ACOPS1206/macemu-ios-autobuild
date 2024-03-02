@@ -51,7 +51,7 @@ $(SRCARCHIVE): $(SRCS) $(DOCS)
 links:
 	(cd src/Windows; if [ ! -e m4 ]; then ln -s ../../../BasiliskII/src/Unix/m4; fi)
 	@list='adb.cpp audio.cpp cdrom.cpp disk.cpp extfs.cpp pict.c \
-	       prefs.cpp scsi.cpp sony.cpp xpram.cpp \
+	       prefs.cpp scsi.cpp sony.cpp timer.cpp xpram.cpp \
 	       bincue.cpp include/bincue.h \
 	       include/adb.h include/audio.h include/audio_defs.h \
 	       include/cdrom.h include/clip.h include/debug.h include/disk.h \
@@ -68,7 +68,7 @@ links:
 	       Unix/vhd_unix.cpp \
 	       Unix/extfs_unix.cpp Unix/serial_unix.cpp \
 	       Unix/sshpty.h Unix/sshpty.c Unix/strlcpy.h Unix/strlcpy.c \
-	       Unix/sys_unix.cpp Unix/timer_unix.cpp Unix/xpram_unix.cpp \
+	       Unix/sys_unix.cpp Unix/timer_unix.cpp Unix/xpram_unix.cpp Unix/prefs_unix.cpp \
 	       Unix/semaphore.h Unix/posix_sem.cpp Unix/config.sub Unix/config.guess Unix/m4 \
 	       Unix/keycodes Unix/tunconfig Unix/clip_unix.cpp Unix/Irix/audio_irix.cpp \
 	       Unix/Linux/scsi_linux.cpp Unix/Linux/NetDriver Unix/ether_unix.cpp \

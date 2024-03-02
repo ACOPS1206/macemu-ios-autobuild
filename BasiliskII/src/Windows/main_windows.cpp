@@ -61,6 +61,11 @@ extern void flush_icache_range(uint8 *start, uint32 size); // from compemu_suppo
 #define DEBUG 0
 #include "debug.h"
 
+#if !SDL_VERSION_ATLEAST(3, 0, 0)
+#define SDL_Mutex		SDL_mutex
+#define SDL_EVENT_KEY_UP	SDL_KEYUP
+#define SDL_EVENT_KEY_DOWN	SDL_KEYDOWN
+#endif
 
 // Constants
 const TCHAR ROM_FILE_NAME[] = TEXT("ROM");
@@ -86,7 +91,7 @@ static bool tick_thread_active = false;				// Flag: 60Hz thread installed
 static volatile bool tick_thread_cancel = false;	// Flag: Cancel 60Hz thread
 static SDL_Thread *tick_thread;						// 60Hz thread
 
-static SDL_mutex *intflag_lock = NULL;				// Mutex to protect InterruptFlags
+static SDL_Mutex *intflag_lock = NULL;				// Mutex to protect InterruptFlags
 #define LOCK_INTFLAGS SDL_LockMutex(intflag_lock)
 #define UNLOCK_INTFLAGS SDL_UnlockMutex(intflag_lock)
 
@@ -98,11 +103,14 @@ uint8 *ScratchMem = NULL;			// Scratch memory for Mac ROM writes
 static bool lm_area_mapped = false;	// Flag: Low Memory area mmap()ped
 #endif
 
+static HHOOK keyboard_hook; // Hook for intercepting windows key events
+
 
 // Prototypes
 static int xpram_func(void *arg);
 static int tick_func(void *arg);
 static void one_tick(...);
+static LRESULT CALLBACK low_level_keyboard_hook(int nCode, WPARAM wParam, LPARAM lParam);
 
 
 /*
@@ -187,6 +195,16 @@ static void sigsegv_dump_state(sigsegv_info_t *sip)
 #endif
 }
 
+uint16 emulated_ticks;
+void cpu_do_check_ticks(void)
+{
+	static int delay = -1;
+	if (delay < 0)
+		delay = PrefsFindInt32("delay");
+	if (delay)
+		usleep(delay);
+}
+
 
 /*
  *  Main program
@@ -204,6 +222,7 @@ static void usage(const char *prg_name)
 	);
 	LoadPrefs(NULL); // read the prefs file so PrefsPrintUsage() will print the correct default values
 	PrefsPrintUsage();
+	printf("\nBuild Date: %s\n", __DATE__);
 	exit(0);
 }
 
@@ -282,6 +301,12 @@ int main(int argc, char **argv)
 	if (!check_drivers())
 		QuitEmulator();
 #endif
+
+	// Install keyboard hook to block Windows key if enabled in prefs
+	if (PrefsFindBool("reservewindowskey"))
+	{
+		keyboard_hook = SetWindowsHookEx(WH_KEYBOARD_LL, low_level_keyboard_hook, GetModuleHandle(NULL), 0);
+	}
 
 	// Initialize SDL system
 	int sdl_flags = 0;
@@ -500,7 +525,7 @@ void FlushCodeCache(void *start, uint32 size)
 struct B2_mutex {
 	B2_mutex() { m = SDL_CreateMutex(); }
 	~B2_mutex() { if (m) SDL_DestroyMutex(m); }
-	SDL_mutex *m;
+	SDL_Mutex *m;
 };
 
 B2_mutex *B2_create_mutex(void)
@@ -598,13 +623,15 @@ static void one_tick(...)
 	}
 }
 
+bool tick_inhibit;
 static int tick_func(void *arg)
 {
 	uint64 start = GetTicks_usec();
 	int64 ticks = 0;
 	uint64 next = GetTicks_usec();
 	while (!tick_thread_cancel) {
-		one_tick();
+		if (!tick_inhibit)
+			one_tick();
 		next += 16625;
 		int64 delay = next - GetTicks_usec();
 		if (delay > 0)
@@ -624,22 +651,25 @@ static int tick_func(void *arg)
  */
 
 #ifdef USE_SDL_VIDEO
+#if SDL_VERSION_ATLEAST(3, 0, 0)
+#include <SDL_video.h>
+#else
 #include <SDL_syswm.h>
+#endif
 extern SDL_Window *sdl_window;
 HWND GetMainWindowHandle(void)
 {
-	SDL_SysWMinfo wmInfo;
-	SDL_VERSION(&wmInfo.version);
 	if (!sdl_window) {
 		return NULL;
 	}
-	if (!SDL_GetWindowWMInfo(sdl_window, &wmInfo)) {
-		return NULL;
-	}
-	if (wmInfo.subsystem != SDL_SYSWM_WINDOWS) {
-		return NULL;
-	}
-	return wmInfo.info.win.window;
+#if SDL_VERSION_ATLEAST(3, 0, 0)
+	SDL_PropertiesID props = SDL_GetWindowProperties(sdl_window);
+	return (HWND)SDL_GetProperty(props, "SDL.window.cocoa.window", NULL);
+#else
+	SDL_SysWMinfo wmInfo;
+	SDL_VERSION(&wmInfo.version);
+	return SDL_GetWindowWMInfo(sdl_window, &wmInfo) ? wmInfo.info.win.window : NULL;
+#endif
 }
 #endif
 
@@ -710,4 +740,44 @@ bool ChoiceAlert(const char *text, const char *pos, const char *neg)
 {
 	printf(GetString(STR_SHELL_WARNING_PREFIX), text);
 	return false;	//!!
+}
+
+/*
+ *  Low level keyboard hook allowing us to intercept events involving the Windows key
+ */
+static LRESULT CALLBACK low_level_keyboard_hook(int nCode, WPARAM wParam, LPARAM lParam)
+{
+	// Not a relevant event, immediately pass it on
+	if (nCode != HC_ACTION)
+        return CallNextHookEx(keyboard_hook, nCode, wParam, lParam);
+
+	KBDLLHOOKSTRUCT *p = (KBDLLHOOKSTRUCT *)lParam;
+	switch (wParam) {
+		case WM_KEYDOWN:
+		case WM_KEYUP:
+			// Intercept left/right windows keys when we have keyboard focus so Windows doesn't handle them
+			if (p->vkCode == VK_LWIN || p->vkCode == VK_RWIN) {
+				bool intercept_event = false;
+#ifdef USE_SDL_VIDEO
+				if (sdl_window && (SDL_GetWindowFlags(sdl_window) & SDL_WINDOW_INPUT_FOCUS)) {
+					intercept_event = true;
+				}
+#endif
+
+				// If we've determined we should intercept the event, intercept it. But pass the event onto SDL so Basilisk handles it.
+				if (intercept_event) {
+					SDL_Event e;
+					memset(&e, 0, sizeof(e));
+					e.type = (wParam == WM_KEYDOWN) ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+					e.key.keysym.sym = (p->vkCode == VK_LWIN) ? SDLK_LGUI : SDLK_RGUI;
+					e.key.keysym.scancode = (p->vkCode == VK_LWIN) ? SDL_SCANCODE_LGUI : SDL_SCANCODE_RGUI;
+					SDL_PushEvent(&e);
+					return 1;
+				}
+			}
+			break;
+	}
+
+	// If we fall here, we weren't supposed to intercept it.
+	return CallNextHookEx(keyboard_hook, nCode, wParam, lParam);
 }

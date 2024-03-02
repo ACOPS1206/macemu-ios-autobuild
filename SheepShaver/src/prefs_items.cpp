@@ -73,6 +73,7 @@ prefs_desc common_prefs_items[] = {
 	{"title", TYPE_STRING, false,	"window title"},
 	{"sound_buffer", TYPE_INT32, false,	"sound buffer length"},
 	{"name_encoding", TYPE_INT32, false,	"file name encoding"},
+	{"init_grab", TYPE_BOOLEAN, false,	"initially grabbing mouse"},
 	{NULL, TYPE_END, false, NULL} // End of list
 };
 
@@ -96,7 +97,7 @@ void AddPrefsDefaults(void)
 	PrefsAddBool("nogui", false);
 	PrefsAddBool("noclipconversion", false);
 	PrefsAddBool("ignoresegv", true);
-	PrefsAddBool("ignoreillegal", false);
+	PrefsAddBool("ignoreillegal", true);
 
 #if USE_JIT
 	// JIT compiler specific options
