@@ -74,6 +74,7 @@ void make_window_transparent(SDL_Window * window)
         return;
     }
     
+    SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     CGColorRef clearColor = [NSColor clearColor].CGColor;
     NSWindow *cocoaWindow = wmInfo.info.cocoa.window;
     NSView *sdlView = cocoaWindow.contentView;
