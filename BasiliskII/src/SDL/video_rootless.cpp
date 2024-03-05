@@ -16,6 +16,7 @@
 
 extern void make_window_transparent(SDL_Window * window);
 extern void update_sdl_video(SDL_Surface *s, int numrects, SDL_Rect *rects);
+extern void update_window_mask_rects(SDL_Window * window, int h, const std::vector<SDL_Rect> &rects, int mag_rate);
 extern int host_menubar_size();
 
 /*
@@ -115,11 +116,13 @@ static struct {
     uint8_t *pixels;
     uint8_t *cursorMask;
     int w,h;
+    bool showingDesktop;
 } display_mask = {
     .pixels = NULL,
     .cursorMask = NULL,
     .w = 0,
-    .h = 0
+    .h = 0,
+    .showingDesktop = false
 };
 
 void MaskRect(int16 top, int16 left, int16 bottom, int16 right, bool in) {
@@ -402,10 +405,17 @@ bool update_display_mask(SDL_Window *window, int w, int h, int mag_rate) {
         mask_rects.push_back(rect);
         memset(display_mask.pixels, 0xff, 2 * display_mask.w * display_mask.h);
     } else if (showing_desktop) {
-        SDL_Rect rect = {.x = 0, .y = 0, .w = w, .h = h};
-        update_sdl_video(NULL, 1, &rect);
-        mask_rects.push_back(rect);
-        memset(display_mask.pixels, 0xff, 2 * display_mask.w * display_mask.h);
+        // only update mask the first time
+        if (!display_mask.showingDesktop) {
+            memset(display_mask.pixels, 0xff, 2 * display_mask.w * display_mask.h);
+            display_mask.showingDesktop = true;
+            SDL_Rect rect = {.x = 0, .y = 0, .w = w, .h = h};
+            update_sdl_video(NULL, 1, &rect);
+            mask_rects.push_back(rect);
+            SDL_ShowCursor(SDL_DISABLE);
+            update_window_mask_rects(window, display_mask.h, mask_rects, mag_rate);
+        }
+        return false;
     } else {
         // clear all
         memset(display_mask.pixels, 0, display_mask.w * display_mask.h);
@@ -417,7 +427,8 @@ bool update_display_mask(SDL_Window *window, int w, int h, int mag_rate) {
     }
     
     bool has_front_process = false;
-    
+    display_mask.showingDesktop = false;
+
     M68kRegisters r;
     uint32 rootLayerPtr = 0;
     for(r.d[0] = 0, r.d[1] = 0;;) {
@@ -474,8 +485,7 @@ bool update_display_mask(SDL_Window *window, int w, int h, int mag_rate) {
     } else {
         SDL_ShowCursor(SDL_ENABLE);
     }
-    
-    extern void update_window_mask_rects(SDL_Window * window, int h, const std::vector<SDL_Rect> &rects, int mag_rate);
+
     update_window_mask_rects(window, display_mask.h, mask_rects, mag_rate);
 
 	bool f = mask_rects.size() > mask_n;
