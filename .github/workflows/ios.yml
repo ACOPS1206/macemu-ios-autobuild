@@ -26,10 +26,10 @@ jobs:
       - name: Check Xcode version
         run: xcodebuild -version
 
-      - name: Pre-build uae_cpu generators (build68k)
+      - name: Pre-build uae_cpu generators
         run: |
-          cd BasiliskII/src/iOS
-          make -f cpu.make
+          cd BasiliskII/src/uae_cpu
+          make -f ../iOS/cpu.make install
 
       - name: Build Xcode Project
         run: |
