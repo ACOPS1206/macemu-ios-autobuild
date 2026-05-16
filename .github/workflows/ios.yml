@@ -29,8 +29,7 @@ jobs:
       - name: Generate Core Headers
         run: |
           cd BasiliskII/src/Unix
-          ./autogen.sh
-          ./configure --without-x --without-gtk
+          ./autogen.sh --without-x --without-gtk --without-mon --without-sdl
 
       - name: Pre-build uae_cpu generators
         run: |
