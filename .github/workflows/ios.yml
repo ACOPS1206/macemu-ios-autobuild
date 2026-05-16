@@ -1,11 +1,10 @@
 name: Build BasiliskII iOS
 
 on:
-  
   push:
-    branches: [ "main", "master", "iOS", "ios" ]
+    branches: [ "main", "master", "ios" ]
   pull_request:
-    branches: [ "main", "master", "iOS", "ios" ]
+    branches: [ "main", "master", "ios" ]
   workflow_dispatch:
 
 jobs:
@@ -16,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: 'iOS'
+          ref: 'ios'
           submodules: recursive
 
       - name: Setup Xcode version
@@ -26,6 +25,11 @@ jobs:
 
       - name: Check Xcode version
         run: xcodebuild -version
+
+      - name: Pre-build uae_cpu generators (build68k)
+        run: |
+          cd BasiliskII/src/iOS
+          make -f cpu.make
 
       - name: Build Xcode Project
         run: |
