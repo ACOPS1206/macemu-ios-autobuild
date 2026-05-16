@@ -1,0 +1,51 @@
+name: Build BasiliskII iOS
+
+on:
+  push:
+    branches: [ "main", "master", "ios" ]
+  pull_request:
+    branches: [ "main", "master", "ios" ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Xcode version
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.4.app
+          xcodebuild -version
+
+      - name: Build Xcode Project
+        run: |
+          cd BasiliskII/src/iOS
+          xcodebuild archive \
+            -project BasiliskII.xcodeproj \
+            -scheme BasiliskII \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath ./build/BasiliskII.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
+
+      - name: Package Unsigned IPA
+        run: |
+          cd BasiliskII/src/iOS
+          mkdir -p ./build/Payload
+          cp -r ./build/BasiliskII.xcarchive/Products/Applications/*.app ./build/Payload/
+          cd ./build
+          zip -r BasiliskII.ipa Payload
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BasiliskII-iOS-Unsigned-IPA
+          path: BasiliskII/src/iOS/build/BasiliskII.ipa
