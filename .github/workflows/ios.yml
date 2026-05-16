@@ -23,13 +23,19 @@ jobs:
         with:
           xcode-version: '^16.0'
 
-      - name: Check Xcode version
-        run: xcodebuild -version
+      - name: Install build dependencies
+        run: brew install autoconf automake libtool
+
+      - name: Generate Core Headers
+        run: |
+          cd BasiliskII/src/Unix
+          ./autogen.sh
+          ./configure --without-x --without-gtk
 
       - name: Pre-build uae_cpu generators
         run: |
           cd BasiliskII/src/uae_cpu
-          make -f ../iOS/cpu.make install
+          make -f ../iOS/cpu.make install SRCROOT=../iOS
 
       - name: Build Xcode Project
         run: |
@@ -44,7 +50,8 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            IPHONEOS_DEPLOYMENT_TARGET=12.0
+            IPHONEOS_DEPLOYMENT_TARGET=12.0 \
+            SWIFT_VERSION=5.0
 
       - name: Package Unsigned IPA
         run: |
